@@ -1,6 +1,7 @@
 # Hostel Parcel Management – Presentation Guide
 
-Use this as a quick prep and walkthrough for your professor. It covers what to learn, how to demo, and common questions.
+See also: [TECH_STACK_CHECKLIST.md](TECH_STACK_CHECKLIST.md) for a one-page study sheet.
+
 
 ## What You Should Understand (and be able to explain)
 - Problem & Users: Guards log/assign parcels; Students receive OTP and collect; Admin seeds data.
@@ -104,4 +105,3 @@ set EXPO_PUBLIC_BACKEND_URL=http://<your-ip>:8001
 yarn start
 ```
 
-Good luck on the presentation — keep it story-first, then show the flows!
