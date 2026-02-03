@@ -565,9 +565,12 @@ const styles = StyleSheet.create({
     marginLeft: 12,
   },
   headerTitle: {
-    fontSize: 20,
-    fontWeight: 'bold',
+    fontSize: Platform.OS === 'android' ? 20 : 22,
+    fontWeight: '700',
     color: '#111827',
+    letterSpacing: 0.2,
+    lineHeight: Platform.OS === 'android' ? 24 : 26,
+    includeFontPadding: false,
   },
   headerSubtitle: {
     fontSize: 12,
@@ -607,9 +610,14 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
   sectionTitle: {
-    fontSize: 18,
-    fontWeight: '600',
+    fontSize: Platform.OS === 'android' ? 19 : 20,
+    fontWeight: '700',
     color: '#111827',
+    letterSpacing: 0.2,
+    lineHeight: Platform.OS === 'android' ? 22 : 24,
+    includeFontPadding: false,
+    flexShrink: 1,
+    marginRight: 12,
   },
   addButton: {
     flexDirection: 'row',
@@ -620,6 +628,7 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '600',
     color: '#2563EB',
+    lineHeight: 18,
   },
   listContainer: {
     paddingBottom: 16,
