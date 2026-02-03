@@ -8,6 +8,8 @@ import {
   TouchableOpacity,
   Modal,
   ActivityIndicator,
+  TextInput,
+  Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -41,6 +43,8 @@ interface StudentDetails {
 
 export default function DeliveredParcels() {
   const [parcels, setParcels] = useState<Parcel[]>([]);
+  const [filteredParcels, setFilteredParcels] = useState<Parcel[]>([]);
+  const [searchQuery, setSearchQuery] = useState('');
   const [refreshing, setRefreshing] = useState(false);
   const [loading, setLoading] = useState(true);
   const [studentModalVisible, setStudentModalVisible] = useState(false);
@@ -66,6 +70,7 @@ export default function DeliveredParcels() {
     try {
       const response = await api.get('/parcel/guard/delivered');
       setParcels(response.data.parcels);
+      setFilteredParcels(response.data.parcels);
     } catch (error) {
       console.error('Error fetching parcels:', error);
     } finally {
@@ -77,6 +82,22 @@ export default function DeliveredParcels() {
   const handleRefresh = () => {
     setRefreshing(true);
     fetchParcels();
+  };
+
+  const handleSearch = (query: string) => {
+    setSearchQuery(query);
+    if (query.trim() === '') {
+      setFilteredParcels(parcels);
+    } else {
+      const lowercaseQuery = query.toLowerCase();
+      const filtered = parcels.filter((parcel) => {
+        const roomMatch = parcel.room_number.toLowerCase().includes(lowercaseQuery);
+        const rollMatch = parcel.roll_number?.toLowerCase().includes(lowercaseQuery);
+        const nameMatch = parcel.student_name?.toLowerCase().includes(lowercaseQuery);
+        return roomMatch || rollMatch || nameMatch;
+      });
+      setFilteredParcels(filtered);
+    }
   };
 
   const fetchStudentDetails = async (studentId: string) => {
@@ -153,21 +174,46 @@ export default function DeliveredParcels() {
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
-      <FlatList
-        data={parcels}
-        renderItem={renderParcelItem}
-        keyExtractor={(item) => item._id}
-        contentContainerStyle={styles.listContainer}
-        refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />
-        }
-        ListEmptyComponent={
-          <View style={styles.emptyContainer}>
-            <Ionicons name="checkmark-done-outline" size={64} color="#D1D5DB" />
-            <Text style={styles.emptyText}>No delivered parcels yet</Text>
-          </View>
-        }
-      />
+      <View style={styles.content}>
+        {/* Search Bar */}
+        <View style={styles.searchContainer}>
+          <Ionicons name="search" size={20} color="#9CA3AF" style={styles.searchIcon} />
+          <TextInput
+            style={styles.searchInput}
+            placeholder="Search by room, roll number, or name..."
+            value={searchQuery}
+            onChangeText={handleSearch}
+            placeholderTextColor="#9CA3AF"
+          />
+          {searchQuery.length > 0 && (
+            <TouchableOpacity onPress={() => handleSearch('')}>
+              <Ionicons name="close-circle" size={20} color="#9CA3AF" />
+            </TouchableOpacity>
+          )}
+        </View>
+
+        <View style={styles.contentHeader}>
+          <Text style={styles.sectionTitle}>Delivered Parcels</Text>
+        </View>
+
+        <FlatList
+          data={filteredParcels}
+          renderItem={renderParcelItem}
+          keyExtractor={(item) => item._id}
+          contentContainerStyle={styles.listContainer}
+          refreshControl={
+            <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />
+          }
+          ListEmptyComponent={
+            <View style={styles.emptyContainer}>
+              <Ionicons name="checkmark-done-outline" size={64} color="#D1D5DB" />
+              <Text style={styles.emptyText}>
+                {searchQuery ? 'No parcels found' : 'No delivered parcels yet'}
+              </Text>
+            </View>
+          }
+        />
+      </View>
 
       {/* Student Details Modal */}
       <Modal
@@ -275,8 +321,47 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#F9FAFB',
   },
-  listContainer: {
+  content: {
+    flex: 1,
     padding: 16,
+  },
+  searchContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    paddingHorizontal: 12,
+    marginBottom: 16,
+    height: 48,
+  },
+  searchIcon: {
+    marginRight: 8,
+  },
+  searchInput: {
+    flex: 1,
+    fontSize: 14,
+    color: '#111827',
+  },
+  contentHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  sectionTitle: {
+    fontSize: Platform.OS === 'android' ? 19 : 20,
+    fontWeight: '700',
+    color: '#111827',
+    letterSpacing: 0.2,
+    lineHeight: Platform.OS === 'android' ? 22 : 24,
+    includeFontPadding: false,
+    flexShrink: 1,
+    marginRight: 12,
+  },
+  listContainer: {
+    paddingBottom: 16,
   },
   parcelCard: {
     backgroundColor: '#FFFFFF',
