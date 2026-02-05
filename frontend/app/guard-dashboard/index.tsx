@@ -181,7 +181,7 @@ export default function GuardDashboardIndex() {
       setGeneratedOTP(response.data.otp); // For development
       setSelectedParcel(parcel);
       setOtpModalVisible(true);
-      Alert.alert('OTP Sent', `OTP sent to ${response.data.email}\n\nDev OTP: ${response.data.otp}`);
+      Alert.alert('OTP Sent', `OTP sent to ${response.data.email}`);
     } catch (error: any) {
       Alert.alert('Error', error.response?.data?.detail || 'Failed to send OTP');
     }
