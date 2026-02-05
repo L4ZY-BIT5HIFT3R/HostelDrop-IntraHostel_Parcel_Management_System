@@ -1,7 +1,28 @@
 import axios from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import Constants from 'expo-constants';
+import { Platform } from 'react-native';
 
-const API_BASE_URL = process.env.EXPO_PUBLIC_BACKEND_URL || 'http://localhost:8001';
+const getBaseUrl = () => {
+  const envUrl = process.env.EXPO_PUBLIC_BACKEND_URL;
+  if (envUrl) {
+    return envUrl;
+  }
+
+  const hostUri = Constants.expoConfig?.hostUri || (Constants.manifest as any)?.hostUri;
+  if (hostUri) {
+    const host = hostUri.split(':')[0];
+    return `http://${host}:8001`;
+  }
+
+  if (Platform.OS === 'android') {
+    return 'http://10.0.2.2:8001';
+  }
+
+  return 'http://localhost:8001';
+};
+
+const API_BASE_URL = getBaseUrl();
 
 const api = axios.create({
   baseURL: `${API_BASE_URL}/api`,
