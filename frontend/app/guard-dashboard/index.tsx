@@ -188,6 +188,9 @@ export default function GuardDashboardIndex() {
   };
 
   const handleVerifyOTP = async () => {
+    if (errorVisible) {
+      setErrorVisible(false);
+    }
     if (!enteredOTP.trim()) {
       setErrorMessage('Please enter OTP');
       setErrorVisible(true);
