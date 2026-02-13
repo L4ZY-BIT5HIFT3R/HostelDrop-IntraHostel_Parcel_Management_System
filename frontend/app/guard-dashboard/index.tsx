@@ -19,7 +19,6 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'expo-router';
 import api from '../../utils/api';
 import { useAuthStore } from '../../store/authStore';
-import ErrorPopup from '../../components/ErrorPopup';
 
 interface Parcel {
   _id: string;
@@ -47,7 +46,6 @@ export default function GuardDashboardIndex() {
   const [selectedParcel, setSelectedParcel] = useState<Parcel | null>(null);
   const [generatedOTP, setGeneratedOTP] = useState('');
   const [enteredOTP, setEnteredOTP] = useState('');
-  const [errorVisible, setErrorVisible] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
 
   // Add Parcel Form
@@ -180,6 +178,8 @@ export default function GuardDashboardIndex() {
 
       setGeneratedOTP(response.data.otp); // For development
       setSelectedParcel(parcel);
+      setEnteredOTP('');
+      setErrorMessage('');
       setOtpModalVisible(true);
       Alert.alert('OTP Sent', `OTP sent to ${response.data.email}`);
     } catch (error: any) {
@@ -188,12 +188,11 @@ export default function GuardDashboardIndex() {
   };
 
   const handleVerifyOTP = async () => {
-    if (errorVisible) {
-      setErrorVisible(false);
+    if (errorMessage) {
+      setErrorMessage('');
     }
     if (!enteredOTP.trim()) {
       setErrorMessage('Please enter OTP');
-      setErrorVisible(true);
       return;
     }
 
@@ -210,14 +209,8 @@ export default function GuardDashboardIndex() {
       setGeneratedOTP('');
       fetchParcels();
     } catch (error: any) {
-      console.error('Parcel verify OTP failed:', error?.response?.status, error?.response?.data || error?.message);
       const msg = error.response?.data?.detail || 'Invalid OTP. Try again.';
       setErrorMessage(msg);
-      setErrorVisible(true);
-      // Fallback alert to ensure visibility on devices where Modal may fail
-      try {
-        Alert.alert('Error', msg);
-      } catch {}
     }
   };
 
@@ -493,13 +486,23 @@ export default function GuardDashboardIndex() {
         visible={otpModalVisible}
         animationType="slide"
         transparent
-        onRequestClose={() => setOtpModalVisible(false)}
+        onRequestClose={() => {
+          setOtpModalVisible(false);
+          setEnteredOTP('');
+          setErrorMessage('');
+        }}
       >
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>Verify OTP</Text>
-              <TouchableOpacity onPress={() => setOtpModalVisible(false)}>
+              <TouchableOpacity
+                onPress={() => {
+                  setOtpModalVisible(false);
+                  setEnteredOTP('');
+                  setErrorMessage('');
+                }}
+              >
                 <Ionicons name="close" size={24} color="#6B7280" />
               </TouchableOpacity>
             </View>
@@ -522,6 +525,13 @@ export default function GuardDashboardIndex() {
                 />
               </View>
 
+              {errorMessage ? (
+                <View style={styles.inlineError}>
+                  <Ionicons name="alert-circle" size={16} color="#DC2626" />
+                  <Text style={styles.inlineErrorText}>{errorMessage}</Text>
+                </View>
+              ) : null}
+
               <TouchableOpacity style={styles.submitButton} onPress={handleVerifyOTP}>
                 <Text style={styles.submitButtonText}>Verify & Deliver</Text>
               </TouchableOpacity>
@@ -529,13 +539,6 @@ export default function GuardDashboardIndex() {
           </View>
         </View>
       </Modal>
-      
-      {/* Error Popup */}
-      <ErrorPopup
-        visible={errorVisible}
-        message={errorMessage}
-        onClose={() => setErrorVisible(false)}
-      />
     </SafeAreaView>
   );
 }
@@ -812,6 +815,21 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
     color: '#FFFFFF',
+  },
+  inlineError: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: '#FEE2E2',
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    marginBottom: 12,
+  },
+  inlineErrorText: {
+    color: '#B91C1C',
+    fontSize: 12,
+    flex: 1,
   },
   otpInfo: {
     fontSize: 14,

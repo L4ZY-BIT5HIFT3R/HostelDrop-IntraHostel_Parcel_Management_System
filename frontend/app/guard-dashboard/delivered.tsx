@@ -16,7 +16,6 @@ import { Ionicons } from '@expo/vector-icons';
 import { useState, useEffect } from 'react';
 import { useIsFocused } from '@react-navigation/native';
 import api from '../../utils/api';
-import ErrorPopup from '../../components/ErrorPopup';
 
 interface Parcel {
   _id: string;
@@ -50,7 +49,6 @@ export default function DeliveredParcels() {
   const [studentModalVisible, setStudentModalVisible] = useState(false);
   const [selectedStudent, setSelectedStudent] = useState<StudentDetails | null>(null);
   const [loadingStudent, setLoadingStudent] = useState(false);
-  const [errorVisible, setErrorVisible] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
   const isFocused = useIsFocused();
 
@@ -110,7 +108,6 @@ export default function DeliveredParcels() {
     } catch (error: any) {
       console.error('Error fetching student details:', error?.response?.status, error?.response?.data || error?.message);
       setErrorMessage(error?.response?.data?.detail || 'Failed to fetch student details');
-      setErrorVisible(true);
     } finally {
       setLoadingStudent(false);
     }
@@ -175,6 +172,14 @@ export default function DeliveredParcels() {
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       <View style={styles.content}>
+        {errorMessage ? (
+          <TouchableOpacity style={styles.inlineError} onPress={() => setErrorMessage('')} activeOpacity={0.8}>
+            <Ionicons name="alert-circle" size={16} color="#DC2626" />
+            <Text style={styles.inlineErrorText}>{errorMessage}</Text>
+            <Ionicons name="close" size={16} color="#DC2626" />
+          </TouchableOpacity>
+        ) : null}
+
         {/* Search Bar */}
         <View style={styles.searchContainer}>
           <Ionicons name="search" size={20} color="#9CA3AF" style={styles.searchIcon} />
@@ -306,12 +311,6 @@ export default function DeliveredParcels() {
         </View>
       </Modal>
 
-      {/* Error Popup */}
-      <ErrorPopup
-        visible={errorVisible}
-        message={errorMessage}
-        onClose={() => setErrorVisible(false)}
-      />
     </SafeAreaView>
   );
 }
@@ -460,6 +459,21 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: '#9CA3AF',
     marginTop: 16,
+  },
+  inlineError: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: '#FEE2E2',
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    marginBottom: 12,
+  },
+  inlineErrorText: {
+    flex: 1,
+    fontSize: 13,
+    color: '#B91C1C',
   },
   modalOverlay: {
     flex: 1,

@@ -14,7 +14,7 @@ import {
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import api from '../utils/api';
 import { useAuthStore } from '../store/authStore';
 
@@ -24,6 +24,12 @@ export default function AdminPanel() {
   const [selectedRole, setSelectedRole] = useState<'GUARD' | 'STUDENT'>('GUARD');
   const [hostelType, setHostelType] = useState<'BOYS' | 'GIRLS'>('BOYS');
   const [loading, setLoading] = useState(false);
+  const [deletingDelivered, setDeletingDelivered] = useState<'BOYS' | 'GIRLS' | null>(null);
+  const [deliveredSummary, setDeliveredSummary] = useState<{ boys: number; girls: number }>({
+    boys: 0,
+    girls: 0,
+  });
+  const [summaryLoading, setSummaryLoading] = useState(false);
 
   // Guard fields
   const [guardName, setGuardName] = useState('');
@@ -105,6 +111,54 @@ export default function AdminPanel() {
         setLoading(false);
       }
     }
+  };
+
+  useEffect(() => {
+    fetchDeliveredSummary();
+  }, []);
+
+  const fetchDeliveredSummary = async () => {
+    setSummaryLoading(true);
+    try {
+      const response = await api.get('/admin/parcels/delivered/summary');
+      setDeliveredSummary({
+        boys: response.data?.boys ?? 0,
+        girls: response.data?.girls ?? 0,
+      });
+    } catch (error: any) {
+      Alert.alert('Error', error.response?.data?.detail || 'Failed to load delivered summary');
+    } finally {
+      setSummaryLoading(false);
+    }
+  };
+
+  const handleDeleteDeliveredParcels = async (targetHostel: 'BOYS' | 'GIRLS') => {
+    Alert.alert(
+      'Delete Delivered Parcels',
+      `This will permanently delete delivered parcels for the ${targetHostel} hostel. Continue?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            setDeletingDelivered(targetHostel);
+            try {
+              const response = await api.delete('/admin/parcels/delivered', {
+                params: { hostel_type: targetHostel },
+              });
+              const deletedCount = response.data?.deleted_count ?? 0;
+              Alert.alert('Success', `Deleted ${deletedCount} delivered parcel(s).`);
+              fetchDeliveredSummary();
+            } catch (error: any) {
+              Alert.alert('Error', error.response?.data?.detail || 'Failed to delete delivered parcels');
+            } finally {
+              setDeletingDelivered(null);
+            }
+          },
+        },
+      ]
+    );
   };
 
   const handleLogout = async () => {
@@ -336,6 +390,58 @@ export default function AdminPanel() {
               )}
             </TouchableOpacity>
           </View>
+
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Delivered Parcels</Text>
+            <Text style={styles.sectionHint}>
+              Manage delivered parcels by hostel type.
+            </Text>
+            <View style={styles.summaryRow}>
+              <View style={styles.summaryCard}>
+                <Text style={styles.summaryTitle}>Boys Hostel</Text>
+                <Text style={styles.summaryCount}>
+                  {summaryLoading ? '...' : deliveredSummary.boys}
+                </Text>
+                <TouchableOpacity
+                  style={[
+                    styles.dangerButton,
+                    deletingDelivered === 'BOYS' && styles.submitButtonDisabled,
+                  ]}
+                  onPress={() => handleDeleteDeliveredParcels('BOYS')}
+                  disabled={deletingDelivered === 'BOYS'}
+                  activeOpacity={0.8}
+                >
+                  {deletingDelivered === 'BOYS' ? (
+                    <ActivityIndicator color="#FFFFFF" />
+                  ) : (
+                    <Text style={styles.dangerButtonText}>Delete Delivered</Text>
+                  )}
+                </TouchableOpacity>
+              </View>
+
+              <View style={styles.summaryCard}>
+                <Text style={styles.summaryTitle}>Girls Hostel</Text>
+                <Text style={styles.summaryCount}>
+                  {summaryLoading ? '...' : deliveredSummary.girls}
+                </Text>
+                <TouchableOpacity
+                  style={[
+                    styles.dangerButton,
+                    deletingDelivered === 'GIRLS' && styles.submitButtonDisabled,
+                  ]}
+                  onPress={() => handleDeleteDeliveredParcels('GIRLS')}
+                  disabled={deletingDelivered === 'GIRLS'}
+                  activeOpacity={0.8}
+                >
+                  {deletingDelivered === 'GIRLS' ? (
+                    <ActivityIndicator color="#FFFFFF" />
+                  ) : (
+                    <Text style={styles.dangerButtonText}>Delete Delivered</Text>
+                  )}
+                </TouchableOpacity>
+              </View>
+            </View>
+          </View>
         </ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>
@@ -385,6 +491,35 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: '#111827',
     marginBottom: 16,
+  },
+  sectionHint: {
+    fontSize: 13,
+    color: '#6B7280',
+    marginTop: -8,
+    marginBottom: 12,
+  },
+  summaryRow: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  summaryCard: {
+    flex: 1,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    padding: 16,
+    gap: 10,
+  },
+  summaryTitle: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#111827',
+  },
+  summaryCount: {
+    fontSize: 28,
+    fontWeight: '700',
+    color: '#111827',
   },
   roleButtons: {
     flexDirection: 'row',
@@ -472,6 +607,18 @@ const styles = StyleSheet.create({
     opacity: 0.7,
   },
   submitButtonText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#FFFFFF',
+  },
+  dangerButton: {
+    backgroundColor: '#DC2626',
+    borderRadius: 12,
+    height: 52,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  dangerButtonText: {
     fontSize: 16,
     fontWeight: '600',
     color: '#FFFFFF',

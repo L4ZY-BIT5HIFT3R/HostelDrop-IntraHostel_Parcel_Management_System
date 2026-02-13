@@ -52,6 +52,8 @@ api_router = APIRouter(prefix="/api")
 GMAIL_CLIENT_ID = os.environ.get('GMAIL_CLIENT_ID', '')
 GMAIL_CLIENT_SECRET = os.environ.get('GMAIL_CLIENT_SECRET', '')
 GMAIL_REFRESH_TOKEN = os.environ.get('GMAIL_REFRESH_TOKEN', '')
+ADMIN_EMAIL = os.environ.get('ADMIN_EMAIL', 'admin@hostel.com')
+ADMIN_PASSWORD = os.environ.get('ADMIN_PASSWORD', 'admin123')
 
 # ============= Models =============
 
@@ -84,6 +86,10 @@ class StudentOTPVerify(BaseModel):
     roll_number: str
     email: EmailStr
     otp_code: str
+
+class AdminLoginRequest(BaseModel):
+    email: EmailStr
+    password: str
 
 class AddUserRequest(BaseModel):
     name: str
@@ -166,6 +172,10 @@ async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(s
     user["_id"] = str(user["_id"])
     return user
 
+def require_admin(user: dict):
+    if user.get("role") != UserRole.ADMIN:
+        raise HTTPException(status_code=403, detail="Only admins can access this endpoint")
+
 def generate_otp() -> str:
     return ''.join(random.choices(string.digits, k=6))
 
@@ -230,6 +240,21 @@ async def send_email_otp(email: str, otp_code: str):
         print(f"OTP for {email}: {otp_code}")
         # For development, return True even if email fails
         return True
+
+async def ensure_admin_user():
+    existing = await db.users.find_one({"role": UserRole.ADMIN, "email": ADMIN_EMAIL})
+    if existing:
+        return
+
+    admin_user = {
+        "name": "Admin",
+        "role": UserRole.ADMIN,
+        "hostel_type": HostelType.BOYS,
+        "email": ADMIN_EMAIL,
+        "password": hash_password(ADMIN_PASSWORD),
+        "created_at": datetime.utcnow(),
+    }
+    await db.users.insert_one(admin_user)
 
 async def send_parcel_notification(email: str, student_name: str, room_number: str):
     """Send notification email when parcel is logged"""
@@ -329,6 +354,32 @@ async def guard_login(request: GuardLoginRequest):
         "user": user
     }
 
+@api_router.post("/auth/admin/login", response_model=TokenResponse)
+async def admin_login(request: AdminLoginRequest):
+    """Admin login with email and password"""
+    user = await db.users.find_one({
+        "email": request.email,
+        "role": UserRole.ADMIN
+    })
+
+    if not user or not user.get("password") or not verify_password(request.password, user["password"]):
+        raise HTTPException(status_code=401, detail="Invalid credentials")
+
+    token = create_access_token({
+        "user_id": str(user["_id"]),
+        "role": user["role"],
+        "hostel_type": user.get("hostel_type", HostelType.BOYS)
+    })
+
+    user["_id"] = str(user["_id"])
+    user.pop("password", None)
+
+    return {
+        "access_token": token,
+        "token_type": "bearer",
+        "user": user
+    }
+
 @api_router.post("/auth/student/request-otp")
 async def student_request_otp(request: StudentOTPRequest):
     """Request OTP for student login"""
@@ -419,10 +470,11 @@ async def student_verify_otp(request: StudentOTPVerify):
 # ============= Admin Routes =============
 
 @api_router.post("/admin/add-user")
-async def add_user(request: AddUserRequest):
+async def add_user(request: AddUserRequest, current_user: dict = Depends(get_current_user)):
     """Admin endpoint to add guards or students"""
+    require_admin(current_user)
     # Validate role
-    if request.role not in [UserRole.GUARD, UserRole.STUDENT, UserRole.ADMIN]:
+    if request.role not in [UserRole.GUARD, UserRole.STUDENT]:
         raise HTTPException(status_code=400, detail="Invalid role")
     
     # Validate hostel type
@@ -470,13 +522,47 @@ async def add_user(request: AddUserRequest):
     return {"message": "User added successfully", "user": user_data}
 
 @api_router.get("/admin/users")
-async def get_all_users():
+async def get_all_users(current_user: dict = Depends(get_current_user)):
     """Get all users (for admin)"""
+    require_admin(current_user)
     users = await db.users.find().to_list(1000)
     for user in users:
         user["_id"] = str(user["_id"])
         user.pop("password", None)
     return {"users": users}
+
+@api_router.get("/admin/parcels/delivered/summary")
+async def get_delivered_summary(current_user: dict = Depends(get_current_user)):
+    """Get delivered parcel counts by hostel"""
+    require_admin(current_user)
+    boys_count = await db.parcels.count_documents({
+        "status": ParcelStatus.DELIVERED,
+        "hostel_type": HostelType.BOYS
+    })
+    girls_count = await db.parcels.count_documents({
+        "status": ParcelStatus.DELIVERED,
+        "hostel_type": HostelType.GIRLS
+    })
+    return {
+        "boys": boys_count,
+        "girls": girls_count
+    }
+
+@api_router.delete("/admin/parcels/delivered")
+async def delete_delivered_parcels(hostel_type: Optional[str] = None, current_user: dict = Depends(get_current_user)):
+    """Delete delivered parcels (optionally scoped to a hostel type)"""
+    require_admin(current_user)
+    query = {"status": ParcelStatus.DELIVERED}
+    if hostel_type:
+        if hostel_type not in [HostelType.BOYS, HostelType.GIRLS]:
+            raise HTTPException(status_code=400, detail="Invalid hostel type")
+        query["hostel_type"] = hostel_type
+
+    result = await db.parcels.delete_many(query)
+    return {
+        "message": "Delivered parcels deleted successfully",
+        "deleted_count": result.deleted_count,
+    }
 
 # ============= Parcel Routes =============
 
@@ -764,3 +850,7 @@ logger = logging.getLogger(__name__)
 @app.on_event("shutdown")
 async def shutdown_db_client():
     client.close()
+
+@app.on_event("startup")
+async def startup_seed_admin():
+    await ensure_admin_user()
