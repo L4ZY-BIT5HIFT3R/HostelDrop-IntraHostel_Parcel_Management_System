@@ -16,6 +16,7 @@ export default function RootLayout() {
       <Stack.Screen name="hostel-selection" />
       <Stack.Screen name="guard-login" />
       <Stack.Screen name="student-login" />
+      <Stack.Screen name="admin-login" />
       <Stack.Screen name="guard-dashboard" />
       <Stack.Screen name="student-dashboard" />
       <Stack.Screen name="admin-panel" />

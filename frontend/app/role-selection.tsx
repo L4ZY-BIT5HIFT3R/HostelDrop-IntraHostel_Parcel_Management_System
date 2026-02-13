@@ -12,6 +12,10 @@ export default function RoleSelection() {
     router.push('/hostel-selection');
   };
 
+  const handleAdminSelect = () => {
+    router.push('/admin-login');
+  };
+
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.content}>
@@ -49,6 +53,21 @@ export default function RoleSelection() {
             <View style={styles.cardContent}>
               <Text style={styles.cardTitle}>Student</Text>
               <Text style={styles.cardDescription}>View your parcels</Text>
+            </View>
+            <Ionicons name="chevron-forward" size={24} color="#9CA3AF" />
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.card}
+            onPress={handleAdminSelect}
+            activeOpacity={0.7}
+          >
+            <View style={[styles.iconContainer, { backgroundColor: '#FEE2E2' }]}>
+              <Ionicons name="settings" size={32} color="#DC2626" />
+            </View>
+            <View style={styles.cardContent}>
+              <Text style={styles.cardTitle}>Admin</Text>
+              <Text style={styles.cardDescription}>Manage users and parcels</Text>
             </View>
             <Ionicons name="chevron-forward" size={24} color="#9CA3AF" />
           </TouchableOpacity>
