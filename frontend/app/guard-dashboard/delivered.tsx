@@ -56,7 +56,6 @@ export default function DeliveredParcels() {
     fetchParcels();
   }, []);
 
-  // Re-fetch when tab gains focus so newly delivered items appear
   useEffect(() => {
     if (isFocused) {
       setRefreshing(true);
@@ -180,7 +179,6 @@ export default function DeliveredParcels() {
           </TouchableOpacity>
         ) : null}
 
-        {/* Search Bar */}
         <View style={styles.searchContainer}>
           <Ionicons name="search" size={20} color="#9CA3AF" style={styles.searchIcon} />
           <TextInput
@@ -220,7 +218,6 @@ export default function DeliveredParcels() {
         />
       </View>
 
-      {/* Student Details Modal */}
       <Modal
         visible={studentModalVisible}
         animationType="slide"
