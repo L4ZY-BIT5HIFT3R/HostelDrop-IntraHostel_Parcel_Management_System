@@ -4,8 +4,8 @@ import Constants from 'expo-constants';
 import { Platform } from 'react-native';
 
 const getBaseUrl = () => {
-  const envUrl = process.env.EXPO_PUBLIC_BACKEND_URL;
-  if (envUrl) {
+  const envUrl = process.env.EXPO_PUBLIC_BACKEND_URL?.trim();
+  if (envUrl && envUrl.toLowerCase() !== 'auto') {
     return envUrl;
   }
 
@@ -52,7 +52,6 @@ api.interceptors.response.use(
   async (error) => {
     if (error.response?.status === 401) {
       const detail = error.response?.data?.detail as string | undefined;
-      const path = error.config?.url as string | undefined;
 
       // Only logout on real auth failures, not business 401s like invalid OTP
       const isAuthFailure = typeof detail === 'string' && (
