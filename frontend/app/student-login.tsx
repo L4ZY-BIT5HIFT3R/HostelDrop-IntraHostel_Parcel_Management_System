@@ -9,6 +9,7 @@ import {
   Platform,
   Alert,
   ActivityIndicator,
+  ScrollView,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
@@ -22,15 +23,19 @@ import ErrorPopup from '../components/ErrorPopup';
 export default function StudentLogin() {
   const router = useRouter();
   const login = useAuthStore((state) => state.login);
+  const [authMode, setAuthMode] = useState<'LOGIN' | 'REGISTER'>('LOGIN');
   const [hostelType, setHostelType] = useState<string>('');
   const [rollNumber, setRollNumber] = useState('');
   const [email, setEmail] = useState('');
+  const [name, setName] = useState('');
+  const [roomNumber, setRoomNumber] = useState('');
+  const [contactNumber, setContactNumber] = useState('');
   const [otp, setOtp] = useState('');
   const [loading, setLoading] = useState(false);
   const [otpSent, setOtpSent] = useState(false);
-  const [otpCode, setOtpCode] = useState('');
   const [errorVisible, setErrorVisible] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
+  const isRegisterMode = authMode === 'REGISTER';
 
   useEffect(() => {
     loadHostelType();
@@ -48,6 +53,12 @@ export default function StudentLogin() {
       return;
     }
 
+    if (isRegisterMode && (!name.trim() || !roomNumber.trim())) {
+      setErrorMessage('Please enter name and room number to register');
+      setErrorVisible(true);
+      return;
+    }
+
     if (!email.endsWith('@iiitg.ac.in')) {
       setErrorMessage('Please use your IIITG email (e.g., ab.c@iiitg.ac.in)');
       setErrorVisible(true);
@@ -56,15 +67,18 @@ export default function StudentLogin() {
 
     setLoading(true);
     try {
-      const response = await api.post('/auth/student/request-otp', {
+      const endpoint = isRegisterMode
+        ? '/auth/student/register/request-otp'
+        : '/auth/student/request-otp';
+      await api.post(endpoint, {
         roll_number: rollNumber.trim(),
         email: email.trim().toLowerCase(),
         hostel_type: hostelType,
       });
 
       setOtpSent(true);
-      // For development, show OTP in alert
-      Alert.alert('OTP Sent', `OTP has been sent to ${email}`);
+      const actionLabel = isRegisterMode ? 'Registration OTP' : 'OTP';
+      Alert.alert(`${actionLabel} Sent`, `${actionLabel} has been sent to ${email}`);
     } catch (error: any) {
       setErrorMessage(error.response?.data?.detail || 'Failed to send OTP. Try again.');
       setErrorVisible(true);
@@ -82,11 +96,25 @@ export default function StudentLogin() {
 
     setLoading(true);
     try {
-      const response = await api.post('/auth/student/verify-otp', {
-        roll_number: rollNumber.trim(),
-        email: email.trim().toLowerCase(),
-        otp_code: otp.trim(),
-      });
+      const endpoint = isRegisterMode
+        ? '/auth/student/register/verify-otp'
+        : '/auth/student/verify-otp';
+      const payload = isRegisterMode
+        ? {
+            name: name.trim(),
+            roll_number: rollNumber.trim(),
+            email: email.trim().toLowerCase(),
+            hostel_type: hostelType,
+            room_number: roomNumber.trim(),
+            contact_number: contactNumber.trim() || null,
+            otp_code: otp.trim(),
+          }
+        : {
+            roll_number: rollNumber.trim(),
+            email: email.trim().toLowerCase(),
+            otp_code: otp.trim(),
+          };
+      const response = await api.post(endpoint, payload);
 
       await login(response.data.user, response.data.access_token);
       router.replace('/student-dashboard');
@@ -122,13 +150,97 @@ export default function StudentLogin() {
             <View style={styles.iconContainer}>
               <Ionicons name="person" size={40} color="#16A34A" />
             </View>
-            <Text style={styles.title}>Student Login</Text>
+            <Text style={styles.title}>Student Access</Text>
             <Text style={styles.subtitle}>
               {hostelType === 'BOYS' ? 'Boys' : 'Girls'} Hostel
             </Text>
           </View>
 
-          <View style={styles.form}>
+          <ScrollView
+            style={styles.formScroll}
+            contentContainerStyle={styles.form}
+            showsVerticalScrollIndicator={false}
+            keyboardShouldPersistTaps="handled"
+          >
+            <View style={styles.modeSwitchContainer}>
+              <TouchableOpacity
+                style={[styles.modeButton, authMode === 'LOGIN' && styles.modeButtonActive]}
+                onPress={() => {
+                  setAuthMode('LOGIN');
+                  setOtpSent(false);
+                  setOtp('');
+                }}
+                disabled={loading}
+              >
+                <Text style={[styles.modeButtonText, authMode === 'LOGIN' && styles.modeButtonTextActive]}>
+                  Login
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.modeButton, authMode === 'REGISTER' && styles.modeButtonActive]}
+                onPress={() => {
+                  setAuthMode('REGISTER');
+                  setOtpSent(false);
+                  setOtp('');
+                }}
+                disabled={loading}
+              >
+                <Text style={[styles.modeButtonText, authMode === 'REGISTER' && styles.modeButtonTextActive]}>
+                  Register
+                </Text>
+              </TouchableOpacity>
+            </View>
+
+            {isRegisterMode && (
+              <>
+                <View style={styles.inputContainer}>
+                  <Text style={styles.label}>Full Name</Text>
+                  <View style={styles.inputWrapper}>
+                    <Ionicons name="person-outline" size={20} color="#9CA3AF" style={styles.inputIcon} />
+                    <TextInput
+                      style={styles.input}
+                      placeholder="Enter your full name"
+                      value={name}
+                      onChangeText={setName}
+                      editable={!otpSent}
+                      placeholderTextColor="#9CA3AF"
+                    />
+                  </View>
+                </View>
+
+                <View style={styles.inputContainer}>
+                  <Text style={styles.label}>Room Number</Text>
+                  <View style={styles.inputWrapper}>
+                    <Ionicons name="home-outline" size={20} color="#9CA3AF" style={styles.inputIcon} />
+                    <TextInput
+                      style={styles.input}
+                      placeholder="e.g. 101"
+                      value={roomNumber}
+                      onChangeText={setRoomNumber}
+                      editable={!otpSent}
+                      placeholderTextColor="#9CA3AF"
+                    />
+                  </View>
+                </View>
+
+                <View style={styles.inputContainer}>
+                  <Text style={styles.label}>Contact Number (Optional)</Text>
+                  <View style={styles.inputWrapper}>
+                    <Ionicons name="call-outline" size={20} color="#9CA3AF" style={styles.inputIcon} />
+                    <TextInput
+                      style={styles.input}
+                      placeholder="Enter mobile number"
+                      value={contactNumber}
+                      onChangeText={setContactNumber}
+                      keyboardType="phone-pad"
+                      editable={!otpSent}
+                      placeholderTextColor="#9CA3AF"
+                    />
+                  </View>
+                </View>
+              </>
+            )}
+
             <View style={styles.inputContainer}>
               <Text style={styles.label}>Roll Number</Text>
               <View style={styles.inputWrapper}>
@@ -187,13 +299,15 @@ export default function StudentLogin() {
                 disabled={loading}
                 activeOpacity={0.8}
               >
-                {loading ? (
-                  <ActivityIndicator color="#FFFFFF" />
-                ) : (
-                  <Text style={styles.buttonText}>Send OTP</Text>
-                )}
-              </TouchableOpacity>
-            ) : (
+                  {loading ? (
+                    <ActivityIndicator color="#FFFFFF" />
+                  ) : (
+                    <Text style={styles.buttonText}>
+                      {isRegisterMode ? 'Send Registration OTP' : 'Send OTP'}
+                    </Text>
+                  )}
+                </TouchableOpacity>
+              ) : (
               <View style={styles.otpActions}>
                 <TouchableOpacity
                   style={[styles.button, loading && styles.buttonDisabled]}
@@ -204,7 +318,9 @@ export default function StudentLogin() {
                   {loading ? (
                     <ActivityIndicator color="#FFFFFF" />
                   ) : (
-                    <Text style={styles.buttonText}>Verify & Login</Text>
+                    <Text style={styles.buttonText}>
+                      {isRegisterMode ? 'Verify & Register' : 'Verify & Login'}
+                    </Text>
                   )}
                 </TouchableOpacity>
                 <TouchableOpacity
@@ -218,7 +334,7 @@ export default function StudentLogin() {
                 </TouchableOpacity>
               </View>
             )}
-          </View>
+          </ScrollView>
         </View>
       </KeyboardAvoidingView>
       
@@ -278,6 +394,34 @@ const styles = StyleSheet.create({
   },
   form: {
     gap: 24,
+    paddingBottom: 24,
+  },
+  formScroll: {
+    flex: 1,
+  },
+  modeSwitchContainer: {
+    flexDirection: 'row',
+    backgroundColor: '#E5E7EB',
+    borderRadius: 12,
+    padding: 4,
+  },
+  modeButton: {
+    flex: 1,
+    height: 40,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  modeButtonActive: {
+    backgroundColor: '#FFFFFF',
+  },
+  modeButtonText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#6B7280',
+  },
+  modeButtonTextActive: {
+    color: '#111827',
   },
   inputContainer: {
     gap: 8,
