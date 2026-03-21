@@ -42,6 +42,7 @@ export default function GuardDashboardIndex() {
   const [loading, setLoading] = useState(true);
   const [addModalVisible, setAddModalVisible] = useState(false);
   const [assignModalVisible, setAssignModalVisible] = useState(false);
+  const [editModalVisible, setEditModalVisible] = useState(false);
   const [otpModalVisible, setOtpModalVisible] = useState(false);
   const [selectedParcel, setSelectedParcel] = useState<Parcel | null>(null);
   const [generatedOTP, setGeneratedOTP] = useState('');
@@ -57,6 +58,10 @@ export default function GuardDashboardIndex() {
   // Assign Parcel Form
   const [assignRollNumber, setAssignRollNumber] = useState('');
   const [assignRoomNumber, setAssignRoomNumber] = useState('');
+  const [editRoomNumber, setEditRoomNumber] = useState('');
+  const [editRollNumber, setEditRollNumber] = useState('');
+  const [editStudentName, setEditStudentName] = useState('');
+  const [editDescription, setEditDescription] = useState('');
 
   useEffect(() => {
     fetchParcels();
@@ -176,7 +181,8 @@ export default function GuardDashboardIndex() {
         parcel_id: parcel._id,
       });
 
-      setGeneratedOTP(response.data.otp); // For development
+      const otpForDebug = response.data?.otp;
+      setGeneratedOTP(typeof otpForDebug === 'string' ? otpForDebug : '');
       setSelectedParcel(parcel);
       setEnteredOTP('');
       setErrorMessage('');
@@ -184,6 +190,49 @@ export default function GuardDashboardIndex() {
       Alert.alert('OTP Sent', `OTP sent to ${response.data.email}`);
     } catch (error: any) {
       Alert.alert('Error', error.response?.data?.detail || 'Failed to send OTP');
+    }
+  };
+
+  const openEditParcelModal = (parcel: Parcel) => {
+    setSelectedParcel(parcel);
+    setEditRoomNumber(parcel.room_number || '');
+    setEditRollNumber(parcel.roll_number || '');
+    setEditStudentName(parcel.student_name || '');
+    setEditDescription(parcel.description || '');
+    setEditModalVisible(true);
+  };
+
+  const handleUpdateParcel = async () => {
+    if (!selectedParcel?._id) {
+      Alert.alert('Error', 'No parcel selected');
+      return;
+    }
+    if (!editRoomNumber.trim()) {
+      Alert.alert('Error', 'Room number is required');
+      return;
+    }
+
+    setLoading(true);
+    try {
+      await api.put('/parcel/update', {
+        parcel_id: selectedParcel._id,
+        room_number: editRoomNumber.trim(),
+        roll_number: editRollNumber.trim() || null,
+        student_name: editStudentName.trim() || null,
+        description: editDescription.trim() || null,
+      });
+      Alert.alert('Success', 'Parcel updated successfully');
+      setEditModalVisible(false);
+      setSelectedParcel(null);
+      setEditRoomNumber('');
+      setEditRollNumber('');
+      setEditStudentName('');
+      setEditDescription('');
+      fetchParcels();
+    } catch (error: any) {
+      Alert.alert('Error', error.response?.data?.detail || 'Failed to update parcel');
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -261,6 +310,14 @@ export default function GuardDashboardIndex() {
         )}
 
         <View style={styles.actions}>
+          <TouchableOpacity
+            style={[styles.actionButton, styles.editButton]}
+            onPress={() => openEditParcelModal(item)}
+          >
+            <Ionicons name="create-outline" size={18} color="#7C3AED" />
+            <Text style={styles.editButtonText}>Edit</Text>
+          </TouchableOpacity>
+
           {isUnassigned && (
             <TouchableOpacity
               style={[styles.actionButton, styles.assignButton]}
@@ -425,6 +482,80 @@ export default function GuardDashboardIndex() {
 
               <TouchableOpacity style={styles.submitButton} onPress={handleAddParcel}>
                 <Text style={styles.submitButtonText}>Add Parcel</Text>
+              </TouchableOpacity>
+            </ScrollView>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
+
+      {/* Edit Parcel Modal */}
+      <Modal
+        visible={editModalVisible}
+        animationType="slide"
+        transparent
+        onRequestClose={() => setEditModalVisible(false)}
+      >
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          style={styles.modalOverlay}
+        >
+          <View style={styles.modalContent}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Edit Parcel</Text>
+              <TouchableOpacity onPress={() => setEditModalVisible(false)}>
+                <Ionicons name="close" size={24} color="#6B7280" />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView style={styles.modalForm}>
+              <View style={styles.inputGroup}>
+                <Text style={styles.inputLabel}>Room Number *</Text>
+                <TextInput
+                  style={styles.textInput}
+                  placeholder="e.g., 101"
+                  value={editRoomNumber}
+                  onChangeText={setEditRoomNumber}
+                  placeholderTextColor="#9CA3AF"
+                />
+              </View>
+
+              <View style={styles.inputGroup}>
+                <Text style={styles.inputLabel}>Roll Number (Optional)</Text>
+                <TextInput
+                  style={styles.textInput}
+                  placeholder="Leave empty to unassign"
+                  value={editRollNumber}
+                  onChangeText={setEditRollNumber}
+                  placeholderTextColor="#9CA3AF"
+                />
+              </View>
+
+              <View style={styles.inputGroup}>
+                <Text style={styles.inputLabel}>Student Name (Optional)</Text>
+                <TextInput
+                  style={styles.textInput}
+                  placeholder="Student name"
+                  value={editStudentName}
+                  onChangeText={setEditStudentName}
+                  placeholderTextColor="#9CA3AF"
+                />
+              </View>
+
+              <View style={styles.inputGroup}>
+                <Text style={styles.inputLabel}>Description (Optional)</Text>
+                <TextInput
+                  style={[styles.textInput, styles.textArea]}
+                  placeholder="Parcel description"
+                  value={editDescription}
+                  onChangeText={setEditDescription}
+                  multiline
+                  numberOfLines={3}
+                  placeholderTextColor="#9CA3AF"
+                />
+              </View>
+
+              <TouchableOpacity style={styles.submitButton} onPress={handleUpdateParcel}>
+                <Text style={styles.submitButtonText}>Save Changes</Text>
               </TouchableOpacity>
             </ScrollView>
           </View>
@@ -731,6 +862,15 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '600',
     color: '#2563EB',
+  },
+  editButton: {
+    borderColor: '#7C3AED',
+    backgroundColor: '#F5F3FF',
+  },
+  editButtonText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#7C3AED',
   },
   otpButton: {
     borderColor: '#16A34A',
