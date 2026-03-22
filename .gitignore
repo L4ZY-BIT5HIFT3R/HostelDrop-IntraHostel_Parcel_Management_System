@@ -79,6 +79,7 @@ agenthub/agents/youtube/db
 # Mobile development
 android-sdk/
 frontend/.metro-cache/
+frontend/.expo/
 
 # Environment files
 *.env
