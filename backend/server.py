@@ -1,3 +1,4 @@
+import asyncio
 from fastapi import FastAPI, APIRouter, HTTPException, Depends, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from dotenv import load_dotenv
@@ -87,6 +88,20 @@ if not ADMIN_PASSWORD:
         raise RuntimeError("ADMIN_PASSWORD must be set in production")
     ADMIN_PASSWORD = 'admin123'
     logger.warning("ADMIN_PASSWORD not set. Using development fallback password.")
+
+AUTO_DELETE_DELIVERED_INTERVAL_SECONDS = max(
+    1,
+    int(os.environ.get("AUTO_DELETE_DELIVERED_INTERVAL_SECONDS", "300"))
+)
+AUTO_DELETE_DELIVERED_POLL_SECONDS = max(
+    1,
+    int(os.environ.get("AUTO_DELETE_DELIVERED_POLL_SECONDS", "1"))
+)
+AUTO_DELETE_STATE = {
+    "last_run_at": None,
+    "last_deleted_count": 0,
+}
+auto_delete_task: Optional[asyncio.Task] = None
 
 # ============= Models =============
 
@@ -420,6 +435,67 @@ async def send_parcel_notification(email: str, student_name: str, room_number: s
         logger.info("Notification fallback recorded for %s", mask_email(email))
         return True
 
+async def delete_delivered_parcels_by_query(query: dict) -> int:
+    result = await db.parcels.delete_many(query)
+    return result.deleted_count
+
+async def get_auto_delete_status() -> dict:
+    now = datetime.utcnow()
+    oldest_delivered = await db.parcels.find_one(
+        {
+            "status": ParcelStatus.DELIVERED,
+            "delivered_at": {"$exists": True, "$ne": None},
+        },
+        sort=[("delivered_at", 1)],
+    )
+
+    next_run_at = None
+    remaining_seconds = AUTO_DELETE_DELIVERED_INTERVAL_SECONDS
+    has_pending_cleanup = False
+
+    if oldest_delivered and oldest_delivered.get("delivered_at"):
+        has_pending_cleanup = True
+        next_run_at = oldest_delivered["delivered_at"] + timedelta(
+            seconds=AUTO_DELETE_DELIVERED_INTERVAL_SECONDS
+        )
+        remaining_seconds = max(0, int((next_run_at - now).total_seconds()))
+
+    return {
+        "enabled": True,
+        "interval_seconds": AUTO_DELETE_DELIVERED_INTERVAL_SECONDS,
+        "next_run_at": next_run_at.isoformat() + "Z" if next_run_at else None,
+        "remaining_seconds": remaining_seconds,
+        "has_pending_cleanup": has_pending_cleanup,
+        "last_run_at": (
+            AUTO_DELETE_STATE["last_run_at"].isoformat() + "Z"
+            if AUTO_DELETE_STATE["last_run_at"] else None
+        ),
+        "last_deleted_count": AUTO_DELETE_STATE["last_deleted_count"],
+    }
+
+async def periodic_delivered_cleanup():
+    while True:
+        await asyncio.sleep(AUTO_DELETE_DELIVERED_POLL_SECONDS)
+        try:
+            cutoff = datetime.utcnow() - timedelta(seconds=AUTO_DELETE_DELIVERED_INTERVAL_SECONDS)
+            deleted_count = await delete_delivered_parcels_by_query({
+                "status": ParcelStatus.DELIVERED,
+                "delivered_at": {"$lte": cutoff},
+            })
+            AUTO_DELETE_STATE["last_run_at"] = datetime.utcnow()
+            AUTO_DELETE_STATE["last_deleted_count"] = deleted_count
+            if deleted_count:
+                logger.info(
+                    "Auto-deleted %s delivered parcel(s) after retention expiry",
+                    deleted_count,
+                )
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:
+            AUTO_DELETE_STATE["last_run_at"] = datetime.utcnow()
+            AUTO_DELETE_STATE["last_deleted_count"] = 0
+            logger.warning("Automatic delivered parcel cleanup failed: %s", exc)
+
 # ============= Routes =============
 
 @api_router.get("/")
@@ -745,6 +821,12 @@ async def get_delivered_summary(current_user: dict = Depends(get_current_user)):
         "girls": girls_count
     }
 
+@api_router.get("/admin/parcels/delivered/auto-delete-status")
+async def get_delivered_auto_delete_status(current_user: dict = Depends(get_current_user)):
+    """Get the automatic delivered parcel cleanup countdown"""
+    require_admin(current_user)
+    return await get_auto_delete_status()
+
 @api_router.delete("/admin/parcels/delivered")
 async def delete_delivered_parcels(hostel_type: Optional[str] = None, current_user: dict = Depends(get_current_user)):
     """Delete delivered parcels (optionally scoped to a hostel type)"""
@@ -754,10 +836,10 @@ async def delete_delivered_parcels(hostel_type: Optional[str] = None, current_us
         validate_hostel_type(hostel_type)
         query["hostel_type"] = hostel_type
 
-    result = await db.parcels.delete_many(query)
+    deleted_count = await delete_delivered_parcels_by_query(query)
     return {
         "message": "Delivered parcels deleted successfully",
-        "deleted_count": result.deleted_count,
+        "deleted_count": deleted_count,
     }
 
 # ============= Parcel Routes =============
@@ -1151,8 +1233,19 @@ app.add_middleware(
 
 @app.on_event("shutdown")
 async def shutdown_db_client():
+    global auto_delete_task
+    if auto_delete_task:
+        auto_delete_task.cancel()
+        try:
+            await auto_delete_task
+        except asyncio.CancelledError:
+            pass
+        auto_delete_task = None
     client.close()
 
 @app.on_event("startup")
 async def startup_seed_admin():
+    global auto_delete_task
     await ensure_admin_user()
+    if not auto_delete_task or auto_delete_task.done():
+        auto_delete_task = asyncio.create_task(periodic_delivered_cleanup())
