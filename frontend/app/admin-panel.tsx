@@ -18,6 +18,16 @@ import { useEffect, useState } from 'react';
 import api from '../utils/api';
 import { useAuthStore } from '../store/authStore';
 
+interface AutoDeleteStatus {
+  enabled: boolean;
+  interval_seconds: number;
+  remaining_seconds: number;
+  next_run_at: string | null;
+  has_pending_cleanup: boolean;
+  last_run_at: string | null;
+  last_deleted_count: number;
+}
+
 export default function AdminPanel() {
   const router = useRouter();
   const { logout } = useAuthStore();
@@ -30,6 +40,8 @@ export default function AdminPanel() {
     girls: 0,
   });
   const [summaryLoading, setSummaryLoading] = useState(false);
+  const [autoDeleteStatus, setAutoDeleteStatus] = useState<AutoDeleteStatus | null>(null);
+  const [statusLoading, setStatusLoading] = useState(false);
 
   // Guard fields
   const [guardName, setGuardName] = useState('');
@@ -113,11 +125,7 @@ export default function AdminPanel() {
     }
   };
 
-  useEffect(() => {
-    fetchDeliveredSummary();
-  }, []);
-
-  const fetchDeliveredSummary = async () => {
+  const fetchDeliveredSummary = async (showError = true) => {
     setSummaryLoading(true);
     try {
       const response = await api.get('/admin/parcels/delivered/summary');
@@ -126,11 +134,77 @@ export default function AdminPanel() {
         girls: response.data?.girls ?? 0,
       });
     } catch (error: any) {
-      Alert.alert('Error', error.response?.data?.detail || 'Failed to load delivered summary');
+      if (showError) {
+        Alert.alert('Error', error.response?.data?.detail || 'Failed to load delivered summary');
+      }
     } finally {
       setSummaryLoading(false);
     }
   };
+
+  const fetchAutoDeleteStatus = async (showError = true) => {
+    setStatusLoading(true);
+    try {
+      const response = await api.get('/admin/parcels/delivered/auto-delete-status');
+      setAutoDeleteStatus(response.data);
+    } catch (error: any) {
+      if (showError) {
+        Alert.alert('Error', error.response?.data?.detail || 'Failed to load auto-delete status');
+      }
+    } finally {
+      setStatusLoading(false);
+    }
+  };
+
+  const refreshCleanupStatus = async (showError = true) => {
+    await Promise.all([
+      fetchDeliveredSummary(showError),
+      fetchAutoDeleteStatus(showError),
+    ]);
+  };
+
+  useEffect(() => {
+    refreshCleanupStatus();
+
+    const countdownInterval = setInterval(() => {
+      setAutoDeleteStatus((current) => {
+        if (!current) {
+          return current;
+        }
+        return {
+          ...current,
+          remaining_seconds: Math.max(0, current.remaining_seconds - 1),
+        };
+      });
+    }, 1000);
+
+    return () => {
+      clearInterval(countdownInterval);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (
+      !autoDeleteStatus ||
+      !autoDeleteStatus.has_pending_cleanup ||
+      autoDeleteStatus.remaining_seconds !== 0
+    ) {
+      return;
+    }
+    refreshCleanupStatus(false);
+  }, [autoDeleteStatus?.remaining_seconds]);
+
+  const formatCountdown = (remainingSeconds: number | undefined) => {
+    const safeSeconds = Math.max(0, remainingSeconds ?? 0);
+    const minutes = Math.floor(safeSeconds / 60);
+    const seconds = safeSeconds % 60;
+    return `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+  };
+
+  const intervalMinutes = Math.max(
+    1,
+    Math.floor((autoDeleteStatus?.interval_seconds ?? 300) / 60)
+  );
 
   const handleDeleteDeliveredParcels = async (targetHostel: 'BOYS' | 'GIRLS') => {
     Alert.alert(
@@ -149,7 +223,7 @@ export default function AdminPanel() {
               });
               const deletedCount = response.data?.deleted_count ?? 0;
               Alert.alert('Success', `Deleted ${deletedCount} delivered parcel(s).`);
-              fetchDeliveredSummary();
+              refreshCleanupStatus(false);
             } catch (error: any) {
               Alert.alert('Error', error.response?.data?.detail || 'Failed to delete delivered parcels');
             } finally {
@@ -396,6 +470,34 @@ export default function AdminPanel() {
             <Text style={styles.sectionHint}>
               Manage delivered parcels by hostel type.
             </Text>
+            <View style={styles.autoDeleteCard}>
+              <TouchableOpacity
+                style={styles.refreshButton}
+                onPress={() => refreshCleanupStatus()}
+                disabled={summaryLoading || statusLoading}
+                activeOpacity={0.8}
+              >
+                {summaryLoading || statusLoading ? (
+                  <ActivityIndicator size="small" color="#DC2626" />
+                ) : (
+                  <Ionicons name="refresh" size={20} color="#DC2626" />
+                )}
+              </TouchableOpacity>
+                <View style={styles.autoDeleteHeader}>
+                  <View style={styles.autoDeleteTextBlock}>
+                    <Text style={styles.autoDeleteTitle}>Automatic Cleanup Timer</Text>
+                    <Text style={styles.autoDeleteSubtitle}>
+                      Each delivered parcel is deleted {intervalMinutes} minutes after delivery.
+                    </Text>
+                  </View>
+                </View>
+              <Text style={styles.autoDeleteCountdown}>
+                {statusLoading && !autoDeleteStatus ? 'Loading...' : formatCountdown(autoDeleteStatus?.remaining_seconds)}
+              </Text>
+              <Text style={styles.autoDeleteMeta}>
+                Last cleanup deleted {autoDeleteStatus?.last_deleted_count ?? 0} parcel(s).
+              </Text>
+            </View>
             <View style={styles.summaryRow}>
               <View style={styles.summaryCard}>
                 <Text style={styles.summaryTitle}>Boys Hostel</Text>
@@ -502,6 +604,56 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: 12,
   },
+  autoDeleteCard: {
+    backgroundColor: '#FEF2F2',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#FECACA',
+    padding: 16,
+    gap: 8,
+    marginBottom: 16,
+    position: 'relative',
+  },
+  autoDeleteHeader: {
+    paddingRight: 52,
+  },
+  autoDeleteTextBlock: {
+    flexShrink: 1,
+  },
+  refreshButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#FCA5A5',
+    alignItems: 'center',
+    justifyContent: 'center',
+    position: 'absolute',
+    top: 16,
+    right: 16,
+    zIndex: 1,
+  },
+  autoDeleteTitle: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#991B1B',
+  },
+  autoDeleteSubtitle: {
+    fontSize: 12,
+    color: '#B91C1C',
+    marginTop: 2,
+  },
+  autoDeleteCountdown: {
+    fontSize: 34,
+    fontWeight: '700',
+    color: '#DC2626',
+    letterSpacing: 1,
+  },
+  autoDeleteMeta: {
+    fontSize: 12,
+    color: '#7F1D1D',
+  },
   summaryCard: {
     flex: 1,
     backgroundColor: '#FFFFFF',
@@ -509,17 +661,22 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#E5E7EB',
     padding: 16,
-    gap: 10,
+    gap: 6,
+    minHeight: 170,
   },
   summaryTitle: {
     fontSize: 14,
     fontWeight: '600',
     color: '#111827',
+    textAlign: 'center',
   },
   summaryCount: {
-    fontSize: 28,
+    fontSize: 40,
     fontWeight: '700',
     color: '#111827',
+    textAlign: 'center',
+    marginTop: 6,
+    marginBottom: 6,
   },
   roleButtons: {
     flexDirection: 'row',
@@ -612,15 +769,18 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
   },
   dangerButton: {
-    backgroundColor: '#DC2626',
+    backgroundColor: '#F87171',
     borderRadius: 12,
-    height: 52,
+    minHeight: 48,
     alignItems: 'center',
     justifyContent: 'center',
+    paddingHorizontal: 12,
+    marginTop: 4,
   },
   dangerButtonText: {
-    fontSize: 16,
+    fontSize: 14,
     fontWeight: '600',
     color: '#FFFFFF',
+    textAlign: 'center',
   },
 });
