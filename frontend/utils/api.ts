@@ -26,7 +26,7 @@ const API_BASE_URL = getBaseUrl();
 
 const api = axios.create({
   baseURL: `${API_BASE_URL}/api`,
-  timeout: 10000,
+  timeout: 20000,
   headers: {
     'Content-Type': 'application/json',
   },
@@ -68,5 +68,15 @@ api.interceptors.response.use(
     return Promise.reject(error);
   }
 );
+
+export const generateQrCode = async (parcelId: string) => {
+  const response = await api.post('/parcel/generate-qr', { parcel_id: parcelId });
+  return response.data;
+};
+
+export const verifyQrCode = async (parcelId: string, token: string) => {
+  const response = await api.post('/parcel/verify-qr', { parcel_id: parcelId, token });
+  return response.data;
+};
 
 export default api;

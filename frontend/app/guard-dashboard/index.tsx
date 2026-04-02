@@ -1,4 +1,5 @@
 import React from 'react';
+import QRCode from 'react-native-qrcode-svg';
 import {
   View,
   Text,
@@ -17,7 +18,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useState, useEffect } from 'react';
 import { useRouter } from 'expo-router';
-import api from '../../utils/api';
+import api, { generateQrCode } from '../../utils/api';
 import { useAuthStore } from '../../store/authStore';
 
 interface Parcel {
@@ -44,6 +45,8 @@ export default function GuardDashboardIndex() {
   const [assignModalVisible, setAssignModalVisible] = useState(false);
   const [editModalVisible, setEditModalVisible] = useState(false);
   const [otpModalVisible, setOtpModalVisible] = useState(false);
+  const [qrModalVisible, setQrModalVisible] = useState(false);
+  const [qrString, setQrString] = useState('');
   const [selectedParcel, setSelectedParcel] = useState<Parcel | null>(null);
   const [generatedOTP, setGeneratedOTP] = useState('');
   const [enteredOTP, setEnteredOTP] = useState('');
@@ -193,6 +196,28 @@ export default function GuardDashboardIndex() {
     }
   };
 
+  const handleShowQR = async (parcel: Parcel) => {
+    setLoading(true);
+    try {
+      const response = await generateQrCode(parcel._id);
+      const token = response.token;
+      
+      const payload = JSON.stringify({
+        parcel_id: parcel._id,
+        token: token,
+      });
+      
+      setQrString(payload);
+      setSelectedParcel(parcel);
+      setQrModalVisible(true);
+    } catch (error: any) {
+      console.error('Error generating QR code:', error);
+      Alert.alert('Error Details', String(error) + "\n" + JSON.stringify(error?.response?.data || {}));
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const openEditParcelModal = (parcel: Parcel) => {
     setSelectedParcel(parcel);
     setEditRoomNumber(parcel.room_number || '');
@@ -332,13 +357,15 @@ export default function GuardDashboardIndex() {
           )}
 
           {isPending && (
-            <TouchableOpacity
-              style={[styles.actionButton, styles.otpButton]}
-              onPress={() => handleSendOTP(item)}
-            >
-              <Ionicons name="key" size={18} color="#16A34A" />
-              <Text style={styles.otpButtonText}>Send OTP</Text>
-            </TouchableOpacity>
+            <>
+              <TouchableOpacity
+                style={[styles.actionButton, styles.qrButton]}
+                onPress={() => handleShowQR(item)}
+              >
+                <Ionicons name="qr-code" size={18} color="#9333EA" />
+                <Text style={styles.qrButtonText}>Show QR</Text>
+              </TouchableOpacity>
+            </>
           )}
         </View>
       </View>
@@ -670,6 +697,50 @@ export default function GuardDashboardIndex() {
           </View>
         </View>
       </Modal>
+
+      {/* QR Code Modal */}
+      <Modal
+        visible={qrModalVisible}
+        animationType="slide"
+        transparent={true}
+        onRequestClose={() => setQrModalVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Scan to Claim Parcel</Text>
+              <TouchableOpacity onPress={() => setQrModalVisible(false)}>
+                <Ionicons name="close" size={24} color="#6B7280" />
+              </TouchableOpacity>
+            </View>
+
+            <View style={[styles.modalForm, { alignItems: 'center', paddingBottom: 20 }]}>
+              {qrString ? (
+                <QRCode 
+                  value={qrString} 
+                  size={250} 
+                  backgroundColor="#ffffff"
+                  color="#111827"
+                />
+              ) : (
+                <Text>Generating QR Code...</Text>
+              )}
+              <Text style={{ marginTop: 24, textAlign: 'center', color: '#6B7280' }}>
+                Ask the student to scan this QR code using their HostelDrop app to verify pickup.
+              </Text>
+              <TouchableOpacity 
+                style={[styles.submitButton, { width: '100%', marginTop: 32 }]} 
+                onPress={() => {
+                  setQrModalVisible(false);
+                  fetchParcels(); // Refresh in case student scanned it
+                }}
+              >
+                <Text style={styles.submitButtonText}>Done</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -880,6 +951,15 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '600',
     color: '#16A34A',
+  },
+  qrButton: {
+    borderColor: '#9333EA',
+    backgroundColor: '#FAF5FF',
+  },
+  qrButtonText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#9333EA',
   },
   emptyContainer: {
     flex: 1,
