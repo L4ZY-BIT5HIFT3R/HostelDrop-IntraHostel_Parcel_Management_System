@@ -13,7 +13,8 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useState, useEffect } from 'react';
 import { useRouter } from 'expo-router';
-import api from '../../utils/api';
+import { CameraView, useCameraPermissions } from 'expo-camera';
+import api, { verifyQrCode } from '../../utils/api';
 import { useAuthStore } from '../../store/authStore';
 
 interface Parcel {
@@ -35,6 +36,9 @@ export default function StudentDashboardIndex() {
   const [searchQuery, setSearchQuery] = useState('');
   const [refreshing, setRefreshing] = useState(false);
   const [loading, setLoading] = useState(true);
+  
+  const [scanning, setScanning] = useState(false);
+  const [permission, requestPermission] = useCameraPermissions();
 
   useEffect(() => {
     fetchParcels();
@@ -75,6 +79,34 @@ export default function StudentDashboardIndex() {
         return roomMatch || rollMatch || nameMatch;
       });
       setFilteredParcels(filtered);
+    }
+  };
+
+  const handleStartScan = async () => {
+    if (!permission?.granted) {
+      const result = await requestPermission();
+      if (!result.granted) {
+        Alert.alert('Permission Required', 'Camera permission is required to scan QR codes.');
+        return;
+      }
+    }
+    setScanning(true);
+  };
+
+  const handleBarcodeScanned = async ({ type, data }: { type: string; data: string }) => {
+    setScanning(false);
+    try {
+      const payload = JSON.parse(data);
+      if (!payload.parcel_id || !payload.token) {
+        Alert.alert('Invalid QR Code', 'This QR code is not valid for HostelDrop.');
+        return;
+      }
+      
+      await verifyQrCode(payload.parcel_id, payload.token);
+      Alert.alert('🎉 Success!', 'Parcel claimed successfully! You may now take your package.');
+      fetchParcels();
+    } catch (e: any) {
+      Alert.alert('Error', e.response?.data?.detail || 'Failed to verify QR code.');
     }
   };
 
@@ -141,6 +173,13 @@ export default function StudentDashboardIndex() {
         </TouchableOpacity>
       </View>
 
+      <View style={{ paddingHorizontal: 24, paddingTop: 16 }}>
+        <TouchableOpacity style={styles.scanButton} onPress={handleStartScan}>
+          <Ionicons name="qr-code-outline" size={24} color="#FFF" />
+          <Text style={styles.scanButtonText}>Scan to Pickup</Text>
+        </TouchableOpacity>
+      </View>
+
       <View style={styles.content}>
         {/* Search Bar */}
         <View style={styles.searchContainer}>
@@ -177,6 +216,37 @@ export default function StudentDashboardIndex() {
           }
         />
       </View>
+
+      {/* Full Screen Camera Modal */}
+      {scanning && (
+        <View style={StyleSheet.absoluteFill}>
+          <CameraView
+            style={StyleSheet.absoluteFill}
+            facing="back"
+            onBarcodeScanned={handleBarcodeScanned}
+            barcodeScannerSettings={{
+              barcodeTypes: ['qr'],
+            }}
+          >
+            <SafeAreaView style={{ flex: 1 }}>
+              <View style={styles.cameraHeader}>
+                <TouchableOpacity 
+                  style={styles.closeCameraButton} 
+                  onPress={() => setScanning(false)}
+                >
+                  <Ionicons name="close" size={28} color="#FFF" />
+                </TouchableOpacity>
+              </View>
+              <View style={styles.cameraOverlay}>
+                <View style={styles.scanFrame} />
+                <Text style={styles.scanInstruction}>
+                  Point at the Guard's QR code
+                </Text>
+              </View>
+            </SafeAreaView>
+          </CameraView>
+        </View>
+      )}
     </SafeAreaView>
   );
 }
@@ -317,5 +387,53 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: '#9CA3AF',
     marginTop: 16,
+  },
+  scanButton: {
+    backgroundColor: '#9333EA',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingVertical: 14,
+    borderRadius: 12,
+  },
+  scanButtonText: {
+    color: '#FFF',
+    fontSize: 16,
+    fontWeight: '700',
+  },
+  cameraHeader: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    padding: 24,
+    paddingTop: 48,
+  },
+  closeCameraButton: {
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    padding: 8,
+    borderRadius: 24,
+  },
+  cameraOverlay: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  scanFrame: {
+    width: 250,
+    height: 250,
+    borderWidth: 2,
+    borderColor: '#FFF',
+    backgroundColor: 'transparent',
+    borderRadius: 16,
+  },
+  scanInstruction: {
+    color: '#FFF',
+    fontSize: 18,
+    fontWeight: '600',
+    marginTop: 24,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 8,
   },
 });

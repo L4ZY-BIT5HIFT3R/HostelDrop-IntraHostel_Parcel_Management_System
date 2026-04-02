@@ -27,6 +27,7 @@ export default function StudentLogin() {
   const [hostelType, setHostelType] = useState<string>('');
   const [rollNumber, setRollNumber] = useState('');
   const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   const [name, setName] = useState('');
   const [roomNumber, setRoomNumber] = useState('');
   const [contactNumber, setContactNumber] = useState('');
@@ -46,44 +47,60 @@ export default function StudentLogin() {
     setHostelType(hostel || '');
   };
 
-  const handleRequestOTP = async () => {
-    if (!rollNumber.trim() || !email.trim()) {
-      setErrorMessage('Please enter roll number and email');
-      setErrorVisible(true);
-      return;
-    }
+  const handleAction = async () => {
+    if (!isRegisterMode) {
+      // Login Flow
+      if (!rollNumber.trim() || !password.trim()) {
+        setErrorMessage('Please enter your roll number and password');
+        setErrorVisible(true);
+        return;
+      }
+      setLoading(true);
+      try {
+        const response = await api.post('/auth/student/login', {
+          roll_number: rollNumber.trim(),
+          password: password,
+          hostel_type: hostelType,
+        });
 
-    if (isRegisterMode && (!name.trim() || !roomNumber.trim())) {
-      setErrorMessage('Please enter name and room number to register');
-      setErrorVisible(true);
-      return;
-    }
+        await login(response.data.user, response.data.access_token);
+        router.replace('/student-dashboard');
+      } catch (error: any) {
+        setErrorMessage(error.response?.data?.detail || 'Invalid credentials. Try again.');
+        setErrorVisible(true);
+      } finally {
+        setLoading(false);
+      }
+    } else {
+      // Register Flow
+      if (!rollNumber.trim() || !email.trim() || !name.trim() || !roomNumber.trim() || !password.trim()) {
+        setErrorMessage('Please fill in all required fields to register');
+        setErrorVisible(true);
+        return;
+      }
 
-    if (!email.endsWith('@iiitg.ac.in')) {
-      setErrorMessage('Please use your IIITG email (e.g., ab.c@iiitg.ac.in)');
-      setErrorVisible(true);
-      return;
-    }
+      if (!email.endsWith('@iiitg.ac.in')) {
+        setErrorMessage('Please use your IIITG email (e.g., ab.c@iiitg.ac.in)');
+        setErrorVisible(true);
+        return;
+      }
 
-    setLoading(true);
-    try {
-      const endpoint = isRegisterMode
-        ? '/auth/student/register/request-otp'
-        : '/auth/student/request-otp';
-      await api.post(endpoint, {
-        roll_number: rollNumber.trim(),
-        email: email.trim().toLowerCase(),
-        hostel_type: hostelType,
-      });
+      setLoading(true);
+      try {
+        await api.post('/auth/student/register/request-otp', {
+          roll_number: rollNumber.trim(),
+          email: email.trim().toLowerCase(),
+          hostel_type: hostelType,
+        });
 
-      setOtpSent(true);
-      const actionLabel = isRegisterMode ? 'Registration OTP' : 'OTP';
-      Alert.alert(`${actionLabel} Sent`, `${actionLabel} has been sent to ${email}`);
-    } catch (error: any) {
-      setErrorMessage(error.response?.data?.detail || 'Failed to send OTP. Try again.');
-      setErrorVisible(true);
-    } finally {
-      setLoading(false);
+        setOtpSent(true);
+        Alert.alert('Registration OTP Sent', `OTP has been sent to ${email}`);
+      } catch (error: any) {
+        setErrorMessage(error.response?.data?.detail || 'Failed to send Registration OTP. Try again.');
+        setErrorVisible(true);
+      } finally {
+        setLoading(false);
+      }
     }
   };
 
@@ -96,36 +113,22 @@ export default function StudentLogin() {
 
     setLoading(true);
     try {
-      const endpoint = isRegisterMode
-        ? '/auth/student/register/verify-otp'
-        : '/auth/student/verify-otp';
-      const payload = isRegisterMode
-        ? {
-            name: name.trim(),
-            roll_number: rollNumber.trim(),
-            email: email.trim().toLowerCase(),
-            hostel_type: hostelType,
-            room_number: roomNumber.trim(),
-            contact_number: contactNumber.trim() || null,
-            otp_code: otp.trim(),
-          }
-        : {
-            roll_number: rollNumber.trim(),
-            email: email.trim().toLowerCase(),
-            otp_code: otp.trim(),
-          };
-      const response = await api.post(endpoint, payload);
+      const response = await api.post('/auth/student/register/verify-otp', {
+        name: name.trim(),
+        roll_number: rollNumber.trim(),
+        email: email.trim().toLowerCase(),
+        hostel_type: hostelType,
+        room_number: roomNumber.trim(),
+        contact_number: contactNumber.trim() || null,
+        password: password,
+        otp_code: otp.trim(),
+      });
 
       await login(response.data.user, response.data.access_token);
       router.replace('/student-dashboard');
     } catch (error: any) {
-      console.error('Verify OTP failed:', error?.response?.status, error?.response?.data || error?.message);
       setErrorMessage(error.response?.data?.detail || 'Invalid OTP. Try again.');
       setErrorVisible(true);
-      // Fallback alert to ensure visibility on devices where Modal may fail
-      try {
-        Alert.alert('Error', error.response?.data?.detail || 'Invalid OTP. Try again.');
-      } catch {}
     } finally {
       setLoading(false);
     }
@@ -257,24 +260,42 @@ export default function StudentLogin() {
               </View>
             </View>
 
+            {isRegisterMode && (
+              <View style={styles.inputContainer}>
+                <Text style={styles.label}>College Email</Text>
+                <View style={styles.inputWrapper}>
+                  <Ionicons name="mail-outline" size={20} color="#9CA3AF" style={styles.inputIcon} />
+                  <TextInput
+                    style={styles.input}
+                    placeholder="ab.c@iiitg.ac.in"
+                    value={email}
+                    onChangeText={setEmail}
+                    autoCapitalize="none"
+                    keyboardType="email-address"
+                    editable={!otpSent}
+                    placeholderTextColor="#9CA3AF"
+                  />
+                </View>
+              </View>
+            )}
+
             <View style={styles.inputContainer}>
-              <Text style={styles.label}>College Email</Text>
+              <Text style={styles.label}>Password</Text>
               <View style={styles.inputWrapper}>
-                <Ionicons name="mail-outline" size={20} color="#9CA3AF" style={styles.inputIcon} />
+                <Ionicons name="lock-closed-outline" size={20} color="#9CA3AF" style={styles.inputIcon} />
                 <TextInput
                   style={styles.input}
-                  placeholder="ab.c@iiitg.ac.in"
-                  value={email}
-                  onChangeText={setEmail}
-                  autoCapitalize="none"
-                  keyboardType="email-address"
+                  placeholder={isRegisterMode ? "Create a password" : "Enter your password"}
+                  value={password}
+                  onChangeText={setPassword}
+                  secureTextEntry
                   editable={!otpSent}
                   placeholderTextColor="#9CA3AF"
                 />
               </View>
             </View>
 
-            {otpSent && (
+            {otpSent && isRegisterMode && (
               <View style={styles.inputContainer}>
                 <Text style={styles.label}>Enter OTP</Text>
                 <View style={styles.inputWrapper}>
@@ -295,7 +316,7 @@ export default function StudentLogin() {
             {!otpSent ? (
               <TouchableOpacity
                 style={[styles.button, loading && styles.buttonDisabled]}
-                onPress={handleRequestOTP}
+                onPress={handleAction}
                 disabled={loading}
                 activeOpacity={0.8}
               >
@@ -303,7 +324,7 @@ export default function StudentLogin() {
                     <ActivityIndicator color="#FFFFFF" />
                   ) : (
                     <Text style={styles.buttonText}>
-                      {isRegisterMode ? 'Send Registration OTP' : 'Send OTP'}
+                      {isRegisterMode ? 'Send Registration OTP' : 'Login'}
                     </Text>
                   )}
                 </TouchableOpacity>
@@ -319,7 +340,7 @@ export default function StudentLogin() {
                     <ActivityIndicator color="#FFFFFF" />
                   ) : (
                     <Text style={styles.buttonText}>
-                      {isRegisterMode ? 'Verify & Register' : 'Verify & Login'}
+                      Verify & Register
                     </Text>
                   )}
                 </TouchableOpacity>
@@ -330,7 +351,7 @@ export default function StudentLogin() {
                     setOtp('');
                   }}
                 >
-                  <Text style={styles.resendButtonText}>Resend OTP</Text>
+                  <Text style={styles.resendButtonText}>Edit Details / Resend OTP</Text>
                 </TouchableOpacity>
               </View>
             )}
@@ -338,7 +359,6 @@ export default function StudentLogin() {
         </View>
       </KeyboardAvoidingView>
       
-      {/* Error Popup */}
       <ErrorPopup
         visible={errorVisible}
         message={errorMessage}

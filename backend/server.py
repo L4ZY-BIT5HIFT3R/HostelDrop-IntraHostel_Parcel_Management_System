@@ -20,9 +20,10 @@ from bson.errors import InvalidId
 import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
-import google.auth.transport.requests
-from google.oauth2.credentials import Credentials
-from googleapiclient.discovery import build
+# OAuth2 imports commented out — using SMTP App Password instead
+# import google.auth.transport.requests
+# from google.oauth2.credentials import Credentials
+# from googleapiclient.discovery import build
 import base64
 
 # Configure logging early so startup config warnings are visible.
@@ -77,10 +78,17 @@ app = FastAPI(title="Hostel Parcel Management System")
 # Create a router with the /api prefix
 api_router = APIRouter(prefix="/api")
 
-# Gmail OAuth2 Configuration (User will provide these after app completion)
-GMAIL_CLIENT_ID = os.environ.get('GMAIL_CLIENT_ID', '')
-GMAIL_CLIENT_SECRET = os.environ.get('GMAIL_CLIENT_SECRET', '')
-GMAIL_REFRESH_TOKEN = os.environ.get('GMAIL_REFRESH_TOKEN', '')
+# Gmail SMTP Configuration (App Password)
+# Set these in backend/.env:
+#   SMTP_EMAIL=your-gmail@gmail.com
+#   SMTP_APP_PASSWORD=abcdefghijklmnop
+SMTP_EMAIL = os.environ.get('SMTP_EMAIL', '')
+SMTP_APP_PASSWORD = os.environ.get('SMTP_APP_PASSWORD', '')
+
+# OAuth2 config commented out — using SMTP instead
+# GMAIL_CLIENT_ID = os.environ.get('GMAIL_CLIENT_ID', '')
+# GMAIL_CLIENT_SECRET = os.environ.get('GMAIL_CLIENT_SECRET', '')
+# GMAIL_REFRESH_TOKEN = os.environ.get('GMAIL_REFRESH_TOKEN', '')
 ADMIN_EMAIL = os.environ.get('ADMIN_EMAIL', 'admin@hostel.com')
 ADMIN_PASSWORD = os.environ.get('ADMIN_PASSWORD')
 if not ADMIN_PASSWORD:
@@ -130,24 +138,25 @@ class GuardLoginRequest(BaseModel):
     password: str
     hostel_type: str
 
-class StudentOTPRequest(BaseModel):
+class StudentRegisterRequest(BaseModel):
     roll_number: str
-    email: EmailStr
+    email: str
     hostel_type: str
-
-class StudentOTPVerify(BaseModel):
-    roll_number: str
-    email: EmailStr
-    otp_code: str
 
 class StudentRegisterVerify(BaseModel):
-    name: str = Field(..., min_length=1, max_length=100)
+    name: str
     roll_number: str
-    email: EmailStr
+    email: str
     hostel_type: str
-    room_number: str = Field(..., min_length=1, max_length=20)
-    otp_code: str
+    room_number: str
     contact_number: Optional[str] = None
+    password: str
+    otp_code: str
+
+class StudentLoginRequest(BaseModel):
+    roll_number: str
+    password: str
+    hostel_type: str
 
 class AdminLoginRequest(BaseModel):
     email: EmailStr
@@ -191,6 +200,17 @@ class VerifyParcelOTPRequest(BaseModel):
     parcel_id: str
     otp_code: str
 
+# ============= QR Code Pickup Models =============
+
+class GenerateQRRequest(BaseModel):
+    """Guard requests a one-time QR pickup token for a PENDING parcel."""
+    parcel_id: str
+
+class VerifyQRRequest(BaseModel):
+    """Student submits scanned QR payload to verify and collect their parcel."""
+    parcel_id: str
+    token: str
+
 # Response Models
 class TokenResponse(BaseModel):
     access_token: str
@@ -215,6 +235,10 @@ def hash_password(password: str) -> str:
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
     return pwd_context.verify(plain_password, hashed_password)
+
+def generate_qr_token() -> str:
+    """Generate a secure random token for QR code pickup."""
+    return str(uuid.uuid4())
 
 def create_access_token(data: dict) -> str:
     to_encode = data.copy()
@@ -287,59 +311,39 @@ def get_cors_origins() -> List[str]:
     return ["*"]
 
 async def send_email_otp(email: str, otp_code: str):
-    """Send OTP via Gmail OAuth2"""
+    """Send OTP via Gmail SMTP with App Password"""
     try:
-        # Check if Gmail credentials are configured
-        if not GMAIL_CLIENT_ID or not GMAIL_CLIENT_SECRET or not GMAIL_REFRESH_TOKEN:
+        # Check if SMTP credentials are configured
+        if not SMTP_EMAIL or not SMTP_APP_PASSWORD:
             if ENABLE_SENSITIVE_LOGGING:
-                logger.info("Gmail not configured. OTP for %s: %s", email, otp_code)
+                logger.info("SMTP not configured. OTP for %s: %s", email, otp_code)
             else:
-                logger.info("Gmail not configured. Generated OTP for %s", mask_email(email))
+                logger.info("SMTP not configured. Generated OTP for %s", mask_email(email))
             return True
-        
-        # Create credentials from refresh token
-        creds = Credentials(
-            None,
-            refresh_token=GMAIL_REFRESH_TOKEN,
-            token_uri='https://oauth2.googleapis.com/token',
-            client_id=GMAIL_CLIENT_ID,
-            client_secret=GMAIL_CLIENT_SECRET
-        )
-        
-        # Refresh the access token
-        creds.refresh(google.auth.transport.requests.Request())
-        
-        # Build Gmail service
-        service = build('gmail', 'v1', credentials=creds)
-        
+
         # Create email message
         message = MIMEMultipart()
-        message['to'] = email
-        message['subject'] = 'Hostel Parcel Management - OTP Verification'
-        
-        body = f"""
-        Dear Student,
-        
-        Your OTP for parcel verification is: {otp_code}
-        
-        This OTP is valid for 10 minutes.
-        
-        Please do not share this OTP with anyone.
-        
-        Regards,
-        Hostel Parcel Management System
-        """
-        
+        message['From'] = SMTP_EMAIL
+        message['To'] = email
+        message['Subject'] = 'HostelDrop - OTP Verification'
+
+        body = f"""Dear Student,
+
+Your OTP for verification is: {otp_code}
+
+This OTP is valid for 10 minutes.
+
+Please do not share this OTP with anyone.
+
+Regards,
+HostelDrop - Hostel Parcel Management System"""
+
         message.attach(MIMEText(body, 'plain'))
-        
-        # Encode message
-        raw_message = base64.urlsafe_b64encode(message.as_bytes()).decode('utf-8')
-        
-        # Send email
-        service.users().messages().send(
-            userId='me',
-            body={'raw': raw_message}
-        ).execute()
+
+        # Send via Gmail SMTP (SSL on port 465)
+        with smtplib.SMTP_SSL('smtp.gmail.com', 465, timeout=3) as server:
+            server.login(SMTP_EMAIL, SMTP_APP_PASSWORD)
+            server.send_message(message)
 
         logger.info("OTP email sent to %s", mask_email(email))
         return True
@@ -378,54 +382,34 @@ async def ensure_admin_user():
 async def send_parcel_notification(email: str, student_name: str, room_number: str):
     """Send notification email when parcel is logged"""
     try:
-        # Check if Gmail credentials are configured
-        if not GMAIL_CLIENT_ID or not GMAIL_CLIENT_SECRET or not GMAIL_REFRESH_TOKEN:
-            logger.info("Gmail not configured. Notification queued for %s", mask_email(email))
+        # Check if SMTP credentials are configured
+        if not SMTP_EMAIL or not SMTP_APP_PASSWORD:
+            logger.info("SMTP not configured. Notification queued for %s", mask_email(email))
             return True
-        
-        # Create credentials from refresh token
-        creds = Credentials(
-            None,
-            refresh_token=GMAIL_REFRESH_TOKEN,
-            token_uri='https://oauth2.googleapis.com/token',
-            client_id=GMAIL_CLIENT_ID,
-            client_secret=GMAIL_CLIENT_SECRET
-        )
-        
-        # Refresh the access token
-        creds.refresh(google.auth.transport.requests.Request())
-        
-        # Build Gmail service
-        service = build('gmail', 'v1', credentials=creds)
-        
+
         # Create email message
         message = MIMEMultipart()
-        message['to'] = email
-        message['subject'] = 'Hostel Parcel Management - New Parcel Notification'
-        
-        body = f"""
-        Dear {student_name},
-        
-        A new parcel has been logged for you!
-        
-        Room Number: {room_number}
-        
-        Please collect your parcel from the hostel reception. You will need to verify OTP during collection.
-        
-        Regards,
-        Hostel Parcel Management System
-        """
-        
+        message['From'] = SMTP_EMAIL
+        message['To'] = email
+        message['Subject'] = 'HostelDrop - New Parcel Notification'
+
+        body = f"""Dear {student_name},
+
+A new parcel has been logged for you!
+
+Room Number: {room_number}
+
+Please collect your parcel from the hostel reception. You will need to verify OTP during collection.
+
+Regards,
+HostelDrop - Hostel Parcel Management System"""
+
         message.attach(MIMEText(body, 'plain'))
-        
-        # Encode message
-        raw_message = base64.urlsafe_b64encode(message.as_bytes()).decode('utf-8')
-        
-        # Send email
-        service.users().messages().send(
-            userId='me',
-            body={'raw': raw_message}
-        ).execute()
+
+        # Send via Gmail SMTP (SSL on port 465)
+        with smtplib.SMTP_SSL('smtp.gmail.com', 465, timeout=10) as server:
+            server.login(SMTP_EMAIL, SMTP_APP_PASSWORD)
+            server.send_message(message)
 
         logger.info("Notification email sent to %s", mask_email(email))
         return True
@@ -561,82 +545,19 @@ async def admin_login(request: AdminLoginRequest):
         "user": user
     }
 
-@api_router.post("/auth/student/request-otp")
-async def student_request_otp(request: StudentOTPRequest):
-    """Request OTP for student login"""
+@api_router.post("/auth/student/login", response_model=TokenResponse)
+async def student_login(request: StudentLoginRequest):
+    """Student login with roll number and password"""
     validate_hostel_type(request.hostel_type)
-    # Check if student exists
+    
     user = await db.users.find_one({
         "roll_number": request.roll_number,
-        "email": request.email,
         "role": UserRole.STUDENT,
         "hostel_type": request.hostel_type
     })
     
-    if not user:
-        raise HTTPException(status_code=404, detail="Student not found with provided credentials")
-    
-    # Invalidate any previous unused OTPs for this email
-    await db.otps.update_many({
-        "email": request.email,
-        "purpose": OTPPurpose.STUDENT_LOGIN,
-        "is_used": False
-    }, {"$set": {"is_used": True}})
-
-    # Generate OTP
-    otp_code = generate_otp()
-    expiry_time = datetime.utcnow() + timedelta(minutes=10)
-    
-    # Save OTP to database
-    otp_doc = {
-        "email": request.email,
-        "purpose": OTPPurpose.STUDENT_LOGIN,
-        "otp_code": otp_code,
-        "expiry_time": expiry_time,
-        "is_used": False,
-        "created_at": datetime.utcnow()
-    }
-    
-    await db.otps.insert_one(otp_doc)
-    
-    # Send OTP via email
-    await send_email_otp(request.email, otp_code)
-    
-    return {"message": "OTP sent to your email", "email": request.email}
-
-@api_router.post("/auth/student/verify-otp", response_model=TokenResponse)
-async def student_verify_otp(request: StudentOTPVerify):
-    """Verify OTP and login student"""
-    # Find OTP
-    otp = await db.otps.find_one({
-        "email": request.email,
-        "purpose": OTPPurpose.STUDENT_LOGIN,
-        "otp_code": request.otp_code,
-        "is_used": False
-    })
-    
-    if not otp:
-        raise HTTPException(status_code=401, detail="Invalid OTP")
-    
-    # Check expiry
-    if otp["expiry_time"] < datetime.utcnow():
-        raise HTTPException(status_code=401, detail="OTP has expired")
-    
-    # Mark OTP as used
-    await db.otps.update_one(
-        {"_id": otp["_id"]},
-        {"$set": {"is_used": True}}
-    )
-    
-    # Get user
-    user = await db.users.find_one({
-        "roll_number": request.roll_number,
-        "email": request.email,
-        "role": UserRole.STUDENT
-    })
-    
-    if not user:
-        raise HTTPException(status_code=404, detail="Student not found")
+    if not user or not user.get("password") or not verify_password(request.password, user["password"]):
+        raise HTTPException(status_code=401, detail="Invalid credentials")
     
     token = create_access_token({
         "user_id": str(user["_id"]),
@@ -645,6 +566,7 @@ async def student_verify_otp(request: StudentOTPVerify):
     })
     
     user["_id"] = str(user["_id"])
+    user.pop("password", None)
     
     return {
         "access_token": token,
@@ -653,7 +575,7 @@ async def student_verify_otp(request: StudentOTPVerify):
     }
 
 @api_router.post("/auth/student/register/request-otp")
-async def student_register_request_otp(request: StudentOTPRequest):
+async def student_register_request_otp(request: StudentRegisterRequest):
     """Request OTP for student self-registration"""
     validate_hostel_type(request.hostel_type)
     existing = await db.users.find_one({
@@ -720,6 +642,7 @@ async def student_register_verify_otp(request: StudentRegisterVerify):
         "hostel_type": request.hostel_type,
         "roll_number": request.roll_number.strip(),
         "email": request.email,
+        "password": hash_password(request.password),
         "room_number": request.room_number.strip(),
         "created_at": datetime.utcnow()
     }
@@ -1118,6 +1041,68 @@ async def verify_parcel_otp(request: VerifyParcelOTPRequest, current_user: dict 
     )
     
     return {"message": "Parcel delivered successfully"}
+
+@api_router.post("/parcel/generate-qr")
+async def generate_parcel_qr(request: GenerateQRRequest, current_user: dict = Depends(get_current_user)):
+    """Guard generates a one-time QR pickup token for a PENDING parcel"""
+    if current_user["role"] != UserRole.GUARD:
+        raise HTTPException(status_code=403, detail="Only guards can generate QR tokens")
+    
+    parcel_object_id = parse_object_id(request.parcel_id, "parcel ID")
+    parcel = await db.parcels.find_one({"_id": parcel_object_id})
+    
+    if not parcel:
+        raise HTTPException(status_code=404, detail="Parcel not found")
+    if parcel.get("hostel_type") != current_user["hostel_type"]:
+        raise HTTPException(status_code=403, detail="Parcel belongs to a different hostel")
+    if parcel["status"] != ParcelStatus.PENDING:
+        raise HTTPException(status_code=400, detail="Parcel must be in PENDING status")
+    
+    # Generate new token and attach to the parcel document
+    qr_token = generate_qr_token()
+    await db.parcels.update_one(
+        {"_id": parcel_object_id},
+        {"$set": {"qr_pickup_token": qr_token}}
+    )
+    
+    return {"message": "QR token generated", "token": qr_token}
+
+@api_router.post("/parcel/verify-qr")
+async def verify_parcel_qr(request: VerifyQRRequest, current_user: dict = Depends(get_current_user)):
+    """Student scans the QR and claims their parcel"""
+    if current_user["role"] != UserRole.STUDENT:
+        raise HTTPException(status_code=403, detail="Only students can claim parcels via QR")
+    
+    parcel_object_id = parse_object_id(request.parcel_id, "parcel ID")
+    parcel = await db.parcels.find_one({"_id": parcel_object_id})
+    
+    if not parcel:
+        raise HTTPException(status_code=404, detail="Parcel not found")
+    if parcel["status"] != ParcelStatus.PENDING:
+        raise HTTPException(status_code=400, detail="Parcel is not available for pickup")
+        
+    # Security: Ensure this student owns the parcel
+    if parcel.get("student_id") != current_user["_id"]:
+        raise HTTPException(status_code=403, detail="This parcel belongs to a different student")
+        
+    # Verify the token matches
+    saved_token = parcel.get("qr_pickup_token")
+    if not saved_token or saved_token != request.token:
+        raise HTTPException(status_code=401, detail="Invalid or expired QR code")
+        
+    # Mark as delivered and clear token
+    await db.parcels.update_one(
+        {"_id": parcel_object_id},
+        {
+            "$set": {
+                "status": ParcelStatus.DELIVERED,
+                "delivered_at": datetime.utcnow()
+            },
+            "$unset": {"qr_pickup_token": ""}
+        }
+    )
+    
+    return {"message": "Parcel claimed successfully via QR code!"}
 
 @api_router.get("/parcel/hostel/{hostel_type}")
 async def get_hostel_parcels(hostel_type: str, status: Optional[str] = None, current_user: dict = Depends(get_current_user)):
