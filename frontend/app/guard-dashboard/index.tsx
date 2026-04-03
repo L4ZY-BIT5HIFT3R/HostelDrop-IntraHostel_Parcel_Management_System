@@ -23,6 +23,7 @@ import { useAuthStore } from '../../store/authStore';
 
 interface Parcel {
   _id: string;
+  display_id?: string;
   hostel_type: string;
   room_number: string;
   status: string;
@@ -95,10 +96,11 @@ export default function GuardDashboardIndex() {
     } else {
       const lowercaseQuery = query.toLowerCase();
       const filtered = parcels.filter((parcel) => {
+        const idMatch = parcel.display_id?.toLowerCase().includes(lowercaseQuery);
         const roomMatch = parcel.room_number.toLowerCase().includes(lowercaseQuery);
         const rollMatch = parcel.roll_number?.toLowerCase().includes(lowercaseQuery);
         const nameMatch = parcel.student_name?.toLowerCase().includes(lowercaseQuery);
-        return roomMatch || rollMatch || nameMatch;
+        return idMatch || roomMatch || rollMatch || nameMatch;
       });
       setFilteredParcels(filtered);
     }
@@ -309,12 +311,19 @@ export default function GuardDashboardIndex() {
     return (
       <View style={styles.parcelCard}>
         <View style={styles.parcelHeader}>
-          <View style={styles.parcelInfo}>
-            <Text style={styles.roomNumber}>Room {item.room_number}</Text>
-            <View style={[styles.statusBadge, isUnassigned ? styles.unassignedBadge : styles.pendingBadge]}>
-              <Text style={[styles.statusText, isUnassigned ? styles.unassignedText : styles.pendingText]}>
-                {item.status}
-              </Text>
+          <View style={{ flex: 1 }}>
+            {item.display_id ? (
+              <View style={{ backgroundColor: '#F3F4F6', alignSelf: 'flex-start', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4, marginBottom: 4 }}>
+                <Text style={{ fontSize: 11, fontWeight: '600', color: '#4B5563', letterSpacing: 0.5 }}>{item.display_id}</Text>
+              </View>
+            ) : null}
+            <View style={styles.parcelInfo}>
+              <Text style={styles.roomNumber}>Room {item.room_number}</Text>
+              <View style={[styles.statusBadge, isPending ? styles.pendingBadge : styles.unassignedBadge]}>
+                <Text style={[styles.statusText, isPending ? styles.pendingText : styles.unassignedText]}>
+                  {item.status}
+                </Text>
+              </View>
             </View>
           </View>
           <Text style={styles.date}>
@@ -855,7 +864,7 @@ const styles = StyleSheet.create({
   parcelHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     marginBottom: 12,
   },
   parcelInfo: {
