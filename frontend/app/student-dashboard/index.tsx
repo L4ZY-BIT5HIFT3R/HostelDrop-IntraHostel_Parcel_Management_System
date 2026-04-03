@@ -14,17 +14,19 @@ import { Ionicons } from '@expo/vector-icons';
 import { useState, useEffect } from 'react';
 import { useRouter } from 'expo-router';
 import { CameraView, useCameraPermissions } from 'expo-camera';
-import api, { verifyQrCode } from '../../utils/api';
+import api, { verifyQrCode, generateDelegationCode } from '../../utils/api';
 import { useAuthStore } from '../../store/authStore';
 
 interface Parcel {
   _id: string;
+  display_id?: string;
   hostel_type: string;
   room_number: string;
   status: string;
   student_name?: string;
   roll_number?: string;
   description?: string;
+  student_id?: string;
   created_at: string;
 }
 
@@ -38,7 +40,11 @@ export default function StudentDashboardIndex() {
   const [loading, setLoading] = useState(true);
   
   const [scanning, setScanning] = useState(false);
+  const [processingScan, setProcessingScan] = useState(false);
   const [permission, requestPermission] = useCameraPermissions();
+  
+  const [showDelegateInput, setShowDelegateInput] = useState(false);
+  const [delegatePin, setDelegatePin] = useState('');
 
   useEffect(() => {
     fetchParcels();
@@ -49,7 +55,7 @@ export default function StudentDashboardIndex() {
       const response = await api.get(`/parcel/hostel/${user?.hostel_type}`);
       // Filter only PENDING parcels for students
       const pendingParcels = response.data.parcels.filter(
-        (p: Parcel) => p.status === 'PENDING'
+        (p: Parcel) => ['PENDING', 'UNASSIGNED'].includes(p.status)
       );
       setParcels(pendingParcels);
       setFilteredParcels(pendingParcels);
@@ -73,10 +79,11 @@ export default function StudentDashboardIndex() {
     } else {
       const lowercaseQuery = query.toLowerCase();
       const filtered = parcels.filter((parcel) => {
+        const idMatch = parcel.display_id?.toLowerCase().includes(lowercaseQuery);
         const roomMatch = parcel.room_number.toLowerCase().includes(lowercaseQuery);
         const rollMatch = parcel.roll_number?.toLowerCase().includes(lowercaseQuery);
         const nameMatch = parcel.student_name?.toLowerCase().includes(lowercaseQuery);
-        return roomMatch || rollMatch || nameMatch;
+        return idMatch || roomMatch || rollMatch || nameMatch;
       });
       setFilteredParcels(filtered);
     }
@@ -93,20 +100,40 @@ export default function StudentDashboardIndex() {
     setScanning(true);
   };
 
+  const handleDelegatePickup = async (parcelId: string) => {
+    try {
+      const data = await generateDelegationCode(parcelId);
+      Alert.alert(
+        'Delegation Code Generated',
+        `Give this 6-character PIN to your friend so they can pick up your parcel:\n\n${data.delegation_code}\n\nValid for 10 minutes.`,
+        [{ text: 'OK' }]
+      );
+    } catch (error: any) {
+      Alert.alert('Error', error.response?.data?.detail || 'Failed to generate code.');
+    }
+  };
+
   const handleBarcodeScanned = async ({ type, data }: { type: string; data: string }) => {
+    if (processingScan) return;
+    setProcessingScan(true);
     setScanning(false);
     try {
       const payload = JSON.parse(data);
       if (!payload.parcel_id || !payload.token) {
         Alert.alert('Invalid QR Code', 'This QR code is not valid for HostelDrop.');
+        setProcessingScan(false);
         return;
       }
       
-      await verifyQrCode(payload.parcel_id, payload.token);
+      await verifyQrCode(payload.parcel_id, payload.token, showDelegateInput && delegatePin ? delegatePin : undefined);
       Alert.alert('🎉 Success!', 'Parcel claimed successfully! You may now take your package.');
+      setDelegatePin('');
+      setShowDelegateInput(false);
       fetchParcels();
     } catch (e: any) {
       Alert.alert('Error', e.response?.data?.detail || 'Failed to verify QR code.');
+    } finally {
+      setProcessingScan(false);
     }
   };
 
@@ -127,10 +154,19 @@ export default function StudentDashboardIndex() {
   const renderParcelItem = ({ item }: { item: Parcel }) => (
     <View style={styles.parcelCard}>
       <View style={styles.parcelHeader}>
-        <View style={styles.parcelInfo}>
-          <Text style={styles.roomNumber}>Room {item.room_number}</Text>
-          <View style={styles.pendingBadge}>
-            <Text style={styles.pendingText}>PENDING</Text>
+        <View style={{ flex: 1 }}>
+          {item.display_id ? (
+            <View style={{ backgroundColor: '#F3F4F6', alignSelf: 'flex-start', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4, marginBottom: 4 }}>
+              <Text style={{ fontSize: 11, fontWeight: '600', color: '#4B5563', letterSpacing: 0.5 }}>{item.display_id}</Text>
+            </View>
+          ) : null}
+          <View style={styles.parcelInfo}>
+            <Text style={styles.roomNumber}>Room {item.room_number}</Text>
+            <View style={[styles.pendingBadge, item.status === 'UNASSIGNED' && { backgroundColor: '#FEE2E2' }]}>
+              <Text style={[styles.pendingText, item.status === 'UNASSIGNED' && { color: '#DC2626' }]}>
+                {item.status}
+              </Text>
+            </View>
           </View>
         </View>
         <Text style={styles.date}>
@@ -148,6 +184,16 @@ export default function StudentDashboardIndex() {
 
       {item.description && (
         <Text style={styles.description}>{item.description}</Text>
+      )}
+
+      {item.student_id === user?._id && item.status === 'PENDING' && (
+        <TouchableOpacity
+          style={styles.delegateButton}
+          onPress={() => handleDelegatePickup(item._id)}
+        >
+          <Ionicons name="people-outline" size={16} color="#FFF" />
+          <Text style={styles.delegateButtonText}>Delegate Pickup to Friend</Text>
+        </TouchableOpacity>
       )}
     </View>
   );
@@ -174,9 +220,14 @@ export default function StudentDashboardIndex() {
       </View>
 
       <View style={{ paddingHorizontal: 24, paddingTop: 16 }}>
-        <TouchableOpacity style={styles.scanButton} onPress={handleStartScan}>
+        <TouchableOpacity style={styles.scanButton} onPress={() => { setShowDelegateInput(false); handleStartScan(); }}>
           <Ionicons name="qr-code-outline" size={24} color="#FFF" />
-          <Text style={styles.scanButtonText}>Scan to Pickup</Text>
+          <Text style={styles.scanButtonText}>Scan to Pickup My Parcel</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity style={[styles.scanButton, { marginTop: 12, backgroundColor: '#4F46E5' }]} onPress={() => { setShowDelegateInput(true); handleStartScan(); }}>
+          <Ionicons name="people-outline" size={24} color="#FFF" />
+          <Text style={styles.scanButtonText}>Pickup for a Friend</Text>
         </TouchableOpacity>
       </View>
 
@@ -232,7 +283,7 @@ export default function StudentDashboardIndex() {
               <View style={styles.cameraHeader}>
                 <TouchableOpacity 
                   style={styles.closeCameraButton} 
-                  onPress={() => setScanning(false)}
+                  onPress={() => { setScanning(false); setShowDelegateInput(false); setDelegatePin(''); }}
                 >
                   <Ionicons name="close" size={28} color="#FFF" />
                 </TouchableOpacity>
@@ -242,6 +293,20 @@ export default function StudentDashboardIndex() {
                 <Text style={styles.scanInstruction}>
                   Point at the Guard's QR code
                 </Text>
+                {showDelegateInput && (
+                  <View style={styles.delegatePinContainer}>
+                    <Text style={styles.delegatePinLabel}>Enter 6-Digit PIN from your friend:</Text>
+                    <TextInput
+                      style={styles.delegatePinInput}
+                      value={delegatePin}
+                      onChangeText={setDelegatePin}
+                      placeholder="e.g. A4B92X"
+                      placeholderTextColor="#9CA3AF"
+                      autoCapitalize="characters"
+                      maxLength={6}
+                    />
+                  </View>
+                )}
               </View>
             </SafeAreaView>
           </CameraView>
@@ -331,7 +396,7 @@ const styles = StyleSheet.create({
   parcelHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     marginBottom: 12,
   },
   parcelInfo: {
@@ -436,4 +501,43 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     borderRadius: 8,
   },
+  delegateButton: {
+    backgroundColor: '#F59E0B',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingVertical: 10,
+    borderRadius: 8,
+    marginTop: 12,
+  },
+  delegateButtonText: {
+    color: '#FFF',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  delegatePinContainer: {
+    marginTop: 24,
+    backgroundColor: 'rgba(0,0,0,0.7)',
+    padding: 16,
+    borderRadius: 12,
+    alignItems: 'center',
+    width: 250,
+  },
+  delegatePinLabel: {
+    color: '#FFF',
+    marginBottom: 8,
+    fontWeight: '500',
+    textAlign: 'center',
+  },
+  delegatePinInput: {
+    backgroundColor: '#FFF',
+    borderRadius: 8,
+    padding: 12,
+    width: '100%',
+    textAlign: 'center',
+    fontSize: 18,
+    fontWeight: 'bold',
+    letterSpacing: 2,
+  }
 });

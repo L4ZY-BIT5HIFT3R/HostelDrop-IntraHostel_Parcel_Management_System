@@ -1,5 +1,5 @@
 import asyncio
-from fastapi import FastAPI, APIRouter, HTTPException, Depends, status
+from fastapi import FastAPI, APIRouter, HTTPException, Depends, status, BackgroundTasks
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
@@ -206,10 +206,15 @@ class GenerateQRRequest(BaseModel):
     """Guard requests a one-time QR pickup token for a PENDING parcel."""
     parcel_id: str
 
+class GenerateDelegationRequest(BaseModel):
+    """Student generates a delegation code for a friend."""
+    parcel_id: str
+
 class VerifyQRRequest(BaseModel):
     """Student submits scanned QR payload to verify and collect their parcel."""
     parcel_id: str
     token: str
+    delegation_code: Optional[str] = None
 
 # Response Models
 class TokenResponse(BaseModel):
@@ -219,6 +224,7 @@ class TokenResponse(BaseModel):
 
 class ParcelResponse(BaseModel):
     id: str
+    display_id: Optional[str] = None
     hostel_type: str
     room_number: str
     status: str
@@ -239,6 +245,25 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
 def generate_qr_token() -> str:
     """Generate a secure random token for QR code pickup."""
     return str(uuid.uuid4())
+
+def generate_display_id(description: Optional[str]) -> str:
+    """Generate a human-readable parcel ID like PF1024 or PU0001"""
+    prefix = "U"
+    if description:
+        desc_upper = description.upper()
+        if "FLIPKART" in desc_upper: prefix = "F"
+        elif "AMAZON" in desc_upper: prefix = "A"
+        elif "MYNTRA" in desc_upper: prefix = "M"
+        elif "BLINKIT" in desc_upper: prefix = "B"
+        elif "SWIGGY" in desc_upper: prefix = "S"
+        elif "ZOMATO" in desc_upper: prefix = "Z"
+        else:
+            alpha_chars = [c for c in desc_upper if c.isalpha()]
+            if alpha_chars:
+                prefix = alpha_chars[0]
+            
+    rand_num = "".join(random.choices(string.digits, k=4))
+    return f"P{prefix}{rand_num}"
 
 def create_access_token(data: dict) -> str:
     to_encode = data.copy()
@@ -768,7 +793,7 @@ async def delete_delivered_parcels(hostel_type: Optional[str] = None, current_us
 # ============= Parcel Routes =============
 
 @api_router.post("/parcel/add")
-async def add_parcel(request: AddParcelRequest, current_user: dict = Depends(get_current_user)):
+async def add_parcel(request: AddParcelRequest, background_tasks: BackgroundTasks, current_user: dict = Depends(get_current_user)):
     """Guard adds a new parcel"""
     if current_user["role"] != UserRole.GUARD:
         raise HTTPException(status_code=403, detail="Only guards can add parcels")
@@ -777,6 +802,7 @@ async def add_parcel(request: AddParcelRequest, current_user: dict = Depends(get
         raise HTTPException(status_code=403, detail="Guards can only add parcels for their own hostel")
     
     parcel_data = {
+        "display_id": generate_display_id(request.description),
         "hostel_type": current_user["hostel_type"],
         "room_number": request.room_number,
         "description": request.description,
@@ -801,11 +827,14 @@ async def add_parcel(request: AddParcelRequest, current_user: dict = Depends(get
             parcel_data["student_name"] = request.student_name or student["name"]
             parcel_data["student_email"] = student["email"]
             
-            # Send notification email to student
-            try:
-                await send_parcel_notification(student["email"], student["name"], request.room_number)
-            except Exception as e:
-                logger.warning("Failed to send notification email: %s", str(e))
+            # Send notification email to student in the background
+            async def safe_send_notification(email, name, room):
+                try:
+                    await send_parcel_notification(email, name, room)
+                except Exception as e:
+                    logger.warning("Failed to send notification email (Background): %s", str(e))
+                    
+            background_tasks.add_task(safe_send_notification, student["email"], student["name"], request.room_number)
     else:
         # Only UNASSIGNED if no roll number provided
         parcel_data["status"] = ParcelStatus.UNASSIGNED
@@ -1067,6 +1096,41 @@ async def generate_parcel_qr(request: GenerateQRRequest, current_user: dict = De
     
     return {"message": "QR token generated", "token": qr_token}
 
+@api_router.post("/parcel/delegate")
+async def generate_delegation(request: GenerateDelegationRequest, current_user: dict = Depends(get_current_user)):
+    """Student generates a delegation code for a friend."""
+    if current_user["role"] != UserRole.STUDENT:
+        raise HTTPException(status_code=403, detail="Only students can delegate parcels")
+    
+    parcel_object_id = parse_object_id(request.parcel_id, "parcel ID")
+    parcel = await db.parcels.find_one({"_id": parcel_object_id})
+    
+    if not parcel:
+        raise HTTPException(status_code=404, detail="Parcel not found")
+    if parcel["status"] != ParcelStatus.PENDING:
+        raise HTTPException(status_code=400, detail="Parcel is not available for pickup")
+        
+    # Ensure this student owns the parcel
+    if parcel.get("student_id") != current_user["_id"]:
+        raise HTTPException(status_code=403, detail="This parcel belongs to a different student")
+        
+    delegation_code = "".join(random.choices(string.ascii_uppercase + string.digits, k=6))
+    expiry_time = datetime.utcnow() + timedelta(minutes=10)
+    
+    await db.parcels.update_one(
+        {"_id": parcel_object_id},
+        {"$set": {
+            "delegation_code": delegation_code,
+            "delegation_expiry": expiry_time
+        }}
+    )
+    
+    return {
+        "message": "Delegation code generated", 
+        "delegation_code": delegation_code,
+        "expiry_time": expiry_time
+    }
+
 @api_router.post("/parcel/verify-qr")
 async def verify_parcel_qr(request: VerifyQRRequest, current_user: dict = Depends(get_current_user)):
     """Student scans the QR and claims their parcel"""
@@ -1081,24 +1145,32 @@ async def verify_parcel_qr(request: VerifyQRRequest, current_user: dict = Depend
     if parcel["status"] != ParcelStatus.PENDING:
         raise HTTPException(status_code=400, detail="Parcel is not available for pickup")
         
-    # Security: Ensure this student owns the parcel
+    # Security: Ensure this student owns the parcel, OR provided a valid delegation code
     if parcel.get("student_id") != current_user["_id"]:
-        raise HTTPException(status_code=403, detail="This parcel belongs to a different student")
+        if not request.delegation_code or parcel.get("delegation_code") != request.delegation_code.upper():
+            raise HTTPException(status_code=403, detail="This parcel belongs to a different student")
+        if parcel.get("delegation_expiry") and parcel["delegation_expiry"] < datetime.utcnow():
+            raise HTTPException(status_code=401, detail="Delegation code has expired")
         
     # Verify the token matches
     saved_token = parcel.get("qr_pickup_token")
     if not saved_token or saved_token != request.token:
         raise HTTPException(status_code=401, detail="Invalid or expired QR code")
         
-    # Mark as delivered and clear token
+    # Mark as delivered and clear token and delegation fields
     await db.parcels.update_one(
         {"_id": parcel_object_id},
         {
             "$set": {
                 "status": ParcelStatus.DELIVERED,
-                "delivered_at": datetime.utcnow()
+                "delivered_at": datetime.utcnow(),
+                "collected_by_delegate": parcel.get("student_id") != current_user["_id"]
             },
-            "$unset": {"qr_pickup_token": ""}
+            "$unset": {
+                "qr_pickup_token": "",
+                "delegation_code": "",
+                "delegation_expiry": ""
+            }
         }
     )
     
@@ -1120,7 +1192,7 @@ async def get_hostel_parcels(hostel_type: str, status: Optional[str] = None, cur
     query = {"hostel_type": scoped_hostel}
     
     if current_user["role"] == UserRole.STUDENT:
-        query["status"] = ParcelStatus.PENDING
+        query["status"] = {"$in": [ParcelStatus.PENDING, ParcelStatus.UNASSIGNED]}
     elif status:
         query["status"] = status
     

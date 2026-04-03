@@ -74,8 +74,17 @@ export const generateQrCode = async (parcelId: string) => {
   return response.data;
 };
 
-export const verifyQrCode = async (parcelId: string, token: string) => {
-  const response = await api.post('/parcel/verify-qr', { parcel_id: parcelId, token });
+export const generateDelegationCode = async (parcelId: string) => {
+  const response = await api.post('/parcel/delegate', { parcel_id: parcelId });
+  return response.data;
+};
+
+export const verifyQrCode = async (parcelId: string, token: string, delegationCode?: string) => {
+  const payload: any = { parcel_id: parcelId, token };
+  if (delegationCode) {
+    payload.delegation_code = delegationCode;
+  }
+  const response = await api.post('/parcel/verify-qr', payload);
   return response.data;
 };
 
