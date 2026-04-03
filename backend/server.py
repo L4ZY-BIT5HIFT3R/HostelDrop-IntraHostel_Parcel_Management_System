@@ -1149,7 +1149,8 @@ async def verify_parcel_qr(request: VerifyQRRequest, current_user: dict = Depend
     if parcel.get("student_id") != current_user["_id"]:
         if not request.delegation_code or parcel.get("delegation_code") != request.delegation_code.upper():
             raise HTTPException(status_code=403, detail="This parcel belongs to a different student")
-        if parcel.get("delegation_expiry") and parcel["delegation_expiry"] < datetime.utcnow():
+        delegation_expiry = parcel.get("delegation_expiry")
+        if not delegation_expiry or delegation_expiry < datetime.utcnow():
             raise HTTPException(status_code=401, detail="Delegation code has expired")
         
     # Verify the token matches

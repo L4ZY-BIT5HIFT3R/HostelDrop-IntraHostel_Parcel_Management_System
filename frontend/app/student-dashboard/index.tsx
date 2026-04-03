@@ -38,11 +38,11 @@ export default function StudentDashboardIndex() {
   const [searchQuery, setSearchQuery] = useState('');
   const [refreshing, setRefreshing] = useState(false);
   const [loading, setLoading] = useState(true);
-  
+
   const [scanning, setScanning] = useState(false);
   const [processingScan, setProcessingScan] = useState(false);
   const [permission, requestPermission] = useCameraPermissions();
-  
+
   const [showDelegateInput, setShowDelegateInput] = useState(false);
   const [delegatePin, setDelegatePin] = useState('');
 
@@ -124,7 +124,7 @@ export default function StudentDashboardIndex() {
         setProcessingScan(false);
         return;
       }
-      
+
       await verifyQrCode(payload.parcel_id, payload.token, showDelegateInput && delegatePin ? delegatePin : undefined);
       Alert.alert('🎉 Success!', 'Parcel claimed successfully! You may now take your package.');
       setDelegatePin('');
@@ -201,8 +201,8 @@ export default function StudentDashboardIndex() {
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       <View style={styles.header}>
-        <TouchableOpacity 
-          style={styles.backButton} 
+        <TouchableOpacity
+          style={styles.backButton}
           onPress={async () => {
             await logout();
             router.replace('/role-selection');
@@ -281,8 +281,8 @@ export default function StudentDashboardIndex() {
           >
             <SafeAreaView style={{ flex: 1 }}>
               <View style={styles.cameraHeader}>
-                <TouchableOpacity 
-                  style={styles.closeCameraButton} 
+                <TouchableOpacity
+                  style={styles.closeCameraButton}
                   onPress={() => { setScanning(false); setShowDelegateInput(false); setDelegatePin(''); }}
                 >
                   <Ionicons name="close" size={28} color="#FFF" />
@@ -295,8 +295,7 @@ export default function StudentDashboardIndex() {
                 </Text>
                 {showDelegateInput && (
                   <View style={styles.delegatePinContainer}>
-                    <Text style={styles.delegatePinLabel}>Enter 6-Digit PIN from your friend:</Text>
-                    <TextInput
+                    <Text style={styles.delegatePinLabel}>Enter 6-Character PIN from your friend:</Text>                    <TextInput
                       style={styles.delegatePinInput}
                       value={delegatePin}
                       onChangeText={setDelegatePin}

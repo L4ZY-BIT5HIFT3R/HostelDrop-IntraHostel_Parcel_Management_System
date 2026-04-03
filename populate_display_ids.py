@@ -29,14 +29,24 @@ def generate_display_id(description):
     return f"P{prefix}{rand_num}"
 
 async def main():
-    cursor = db.parcels.find({"display_id": {"$exists": False}})
-    parcels = await cursor.to_list(length=1000)
-    count = 0
-    for parcel in parcels:
-        display_id = generate_display_id(parcel.get("description"))
-        await db.parcels.update_one({"_id": parcel["_id"]}, {"$set": {"display_id": display_id}})
-        count += 1
-    print(f"Updated {count} parcels with display_id.")
+    total_updated = 0
+    while True:
+        cursor = db.parcels.find({"display_id": {"$exists": False}})
+        parcels = await cursor.to_list(length=1000)
+        
+        if not parcels:
+            break
+            
+        count = 0
+        for parcel in parcels:
+            display_id = generate_display_id(parcel.get("description"))
+            await db.parcels.update_one({"_id": parcel["_id"]}, {"$set": {"display_id": display_id}})
+            count += 1
+            
+        total_updated += count
+        print(f"Updated {count} parcels in this batch...")
+        
+    print(f"Finished! Total updated: {total_updated} parcels.")
 
 if __name__ == "__main__":
     asyncio.run(main())
