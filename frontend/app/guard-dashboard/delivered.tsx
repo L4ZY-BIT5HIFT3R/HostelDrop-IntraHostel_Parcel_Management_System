@@ -1,21 +1,22 @@
-import React from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   View,
   Text,
   StyleSheet,
-  FlatList,
   RefreshControl,
   TouchableOpacity,
   Modal,
   ActivityIndicator,
   TextInput,
   Platform,
+  Animated,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { useState, useEffect } from 'react';
 import { useIsFocused } from '@react-navigation/native';
 import api from '../../utils/api';
+import { Colors, GlassCard, GlassInput } from '../../utils/theme';
+import AnimatedCard, { STACK_CARD_HEIGHT, STACK_CARD_SPACING, STACK_FOCUS_OFFSET } from '../../components/AnimatedCard';
 
 interface Parcel {
   _id: string;
@@ -45,11 +46,14 @@ export default function DeliveredParcels() {
   const [filteredParcels, setFilteredParcels] = useState<Parcel[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [refreshing, setRefreshing] = useState(false);
-  const [loading, setLoading] = useState(true);
   const [studentModalVisible, setStudentModalVisible] = useState(false);
   const [selectedStudent, setSelectedStudent] = useState<StudentDetails | null>(null);
   const [loadingStudent, setLoadingStudent] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
+  const [listHeight, setListHeight] = useState(0);
+  const [activeIndex, setActiveIndex] = useState(0);
+  const activeIndexRef = useRef(0);
+  const scrollY = useRef(new Animated.Value(0)).current;
   const isFocused = useIsFocused();
 
   useEffect(() => {
@@ -71,7 +75,6 @@ export default function DeliveredParcels() {
     } catch (error) {
       console.error('Error fetching parcels:', error);
     } finally {
-      setLoading(false);
       setRefreshing(false);
     }
   };
@@ -79,6 +82,25 @@ export default function DeliveredParcels() {
   const handleRefresh = () => {
     setRefreshing(true);
     fetchParcels();
+  };
+
+  const getStackPadding = (height: number) => ({
+    top: Math.max(4, (height - STACK_CARD_HEIGHT) / 2 - STACK_FOCUS_OFFSET - 12),
+    bottom: Math.max(120, (height - STACK_CARD_HEIGHT) / 2 + STACK_FOCUS_OFFSET + 96),
+  });
+
+  const updateActiveIndex = (offsetY: number, viewportHeight?: number) => {
+    const height = viewportHeight ?? listHeight;
+    if (height <= 0 || filteredParcels.length === 0) return;
+    const step = STACK_CARD_HEIGHT + STACK_CARD_SPACING;
+    const { top } = getStackPadding(height);
+    const centerY = offsetY + height / 2;
+    const rawIndex = (centerY - top - STACK_CARD_HEIGHT / 2) / step;
+    const nextIndex = Math.max(0, Math.min(filteredParcels.length - 1, Math.round(rawIndex)));
+    if (nextIndex !== activeIndexRef.current) {
+      activeIndexRef.current = nextIndex;
+      setActiveIndex(nextIndex);
+    }
   };
 
   const handleSearch = (query: string) => {
@@ -112,60 +134,62 @@ export default function DeliveredParcels() {
     }
   };
 
-  const renderParcelItem = ({ item }: { item: Parcel }) => (
-    <TouchableOpacity
-      style={styles.parcelCard}
-      onPress={() => item.student_id && fetchStudentDetails(item.student_id)}
-      activeOpacity={item.student_id ? 0.7 : 1}
-    >
-      <View style={styles.parcelHeader}>
-        <View style={styles.parcelInfo}>
-          <Text style={styles.roomNumber}>Room {item.room_number}</Text>
-          <View style={styles.deliveredBadge}>
-            <Ionicons name="checkmark-circle" size={16} color="#16A34A" />
-            <Text style={styles.deliveredText}>Delivered</Text>
+  const renderParcelItem = ({ item, index }: { item: Parcel; index: number }) => (
+    <AnimatedCard index={index} activeIndex={activeIndex} scrollY={scrollY}>
+      <TouchableOpacity
+        style={styles.parcelCard}
+        onPress={() => item.student_id && fetchStudentDetails(item.student_id)}
+        activeOpacity={item.student_id ? 0.7 : 1}
+      >
+        <View style={styles.parcelHeader}>
+          <View style={styles.parcelInfo}>
+            <Text style={styles.roomNumber}>Room {item.room_number}</Text>
+            <View style={styles.deliveredBadge}>
+              <Ionicons name="checkmark-circle" size={16} color={Colors.accentGreen} />
+              <Text style={styles.deliveredText}>Delivered</Text>
+            </View>
           </View>
+          {item.student_id && (
+            <Ionicons name="information-circle-outline" size={24} color={Colors.accentBlue} />
+          )}
         </View>
-        {item.student_id && (
-          <Ionicons name="information-circle-outline" size={24} color="#2563EB" />
+
+        {item.student_name && (
+          <View style={styles.studentInfo}>
+            <Ionicons name="person" size={16} color={Colors.textMuted} />
+            <Text style={styles.studentName}>{item.student_name}</Text>
+            {item.roll_number && <Text style={styles.rollNumber}>({item.roll_number})</Text>}
+          </View>
         )}
-      </View>
 
-      {item.student_name && (
-        <View style={styles.studentInfo}>
-          <Ionicons name="person" size={16} color="#6B7280" />
-          <Text style={styles.studentName}>{item.student_name}</Text>
-          {item.roll_number && <Text style={styles.rollNumber}>({item.roll_number})</Text>}
-        </View>
-      )}
+        {item.description && (
+          <Text style={styles.description}>{item.description}</Text>
+        )}
 
-      {item.description && (
-        <Text style={styles.description}>{item.description}</Text>
-      )}
-
-      <View style={styles.dateInfo}>
-        <View style={styles.dateRow}>
-          <Text style={styles.dateLabel}>Logged:</Text>
-          <Text style={styles.dateValue}>
-            {new Date(item.created_at).toLocaleDateString()} at{' '}
-            {new Date(item.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-          </Text>
-        </View>
-        {item.delivered_at && (
+        <View style={styles.dateInfo}>
           <View style={styles.dateRow}>
-            <Text style={styles.dateLabel}>Delivered:</Text>
+            <Text style={styles.dateLabel}>Logged:</Text>
             <Text style={styles.dateValue}>
-              {new Date(item.delivered_at).toLocaleDateString()} at{' '}
-              {new Date(item.delivered_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+              {new Date(item.created_at).toLocaleDateString()} at{' '}
+              {new Date(item.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
             </Text>
           </View>
-        )}
-      </View>
+          {item.delivered_at && (
+            <View style={styles.dateRow}>
+              <Text style={styles.dateLabel}>Delivered:</Text>
+              <Text style={styles.dateValue}>
+                {new Date(item.delivered_at).toLocaleDateString()} at{' '}
+                {new Date(item.delivered_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+              </Text>
+            </View>
+          )}
+        </View>
 
-      {item.student_id && (
-        <Text style={styles.tapHint}>Tap to view student details</Text>
-      )}
-    </TouchableOpacity>
+        {item.student_id && (
+          <Text style={styles.tapHint}>Tap to view student details</Text>
+        )}
+      </TouchableOpacity>
+    </AnimatedCard>
   );
 
   return (
@@ -173,24 +197,24 @@ export default function DeliveredParcels() {
       <View style={styles.content}>
         {errorMessage ? (
           <TouchableOpacity style={styles.inlineError} onPress={() => setErrorMessage('')} activeOpacity={0.8}>
-            <Ionicons name="alert-circle" size={16} color="#DC2626" />
+            <Ionicons name="alert-circle" size={16} color={Colors.accentRed} />
             <Text style={styles.inlineErrorText}>{errorMessage}</Text>
-            <Ionicons name="close" size={16} color="#DC2626" />
+            <Ionicons name="close" size={16} color={Colors.accentRed} />
           </TouchableOpacity>
         ) : null}
 
         <View style={styles.searchContainer}>
-          <Ionicons name="search" size={20} color="#9CA3AF" style={styles.searchIcon} />
+          <Ionicons name="search" size={20} color={Colors.textMuted} style={styles.searchIcon} />
           <TextInput
             style={styles.searchInput}
             placeholder="Search by room, roll number, or name..."
             value={searchQuery}
             onChangeText={handleSearch}
-            placeholderTextColor="#9CA3AF"
+            placeholderTextColor={Colors.textMuted}
           />
           {searchQuery.length > 0 && (
             <TouchableOpacity onPress={() => handleSearch('')}>
-              <Ionicons name="close-circle" size={20} color="#9CA3AF" />
+              <Ionicons name="close-circle" size={20} color={Colors.textMuted} />
             </TouchableOpacity>
           )}
         </View>
@@ -199,17 +223,48 @@ export default function DeliveredParcels() {
           <Text style={styles.sectionTitle}>Delivered Parcels</Text>
         </View>
 
-        <FlatList
+        <Animated.FlatList
           data={filteredParcels}
+          extraData={activeIndex}
           renderItem={renderParcelItem}
           keyExtractor={(item) => item._id}
-          contentContainerStyle={styles.listContainer}
+          contentContainerStyle={[
+            styles.listContainer,
+            listHeight > 0
+              ? {
+                  paddingTop: getStackPadding(listHeight).top,
+                  paddingBottom: getStackPadding(listHeight).bottom,
+                }
+              : null,
+          ]}
+          onLayout={(event) => setListHeight(event.nativeEvent.layout.height)}
+          onScroll={Animated.event(
+            [{ nativeEvent: { contentOffset: { y: scrollY } } }],
+            { useNativeDriver: true }
+          )}
+          scrollEventThrottle={16}
+          snapToInterval={STACK_CARD_HEIGHT + STACK_CARD_SPACING}
+          snapToAlignment="center"
+          decelerationRate={0.992}
+          showsVerticalScrollIndicator={false}
+          onScrollEndDrag={(event) => {
+            updateActiveIndex(
+              event.nativeEvent.contentOffset.y,
+              event.nativeEvent.layoutMeasurement?.height
+            );
+          }}
+          onMomentumScrollEnd={(event) => {
+            updateActiveIndex(
+              event.nativeEvent.contentOffset.y,
+              event.nativeEvent.layoutMeasurement?.height
+            );
+          }}
           refreshControl={
-            <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />
+            <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={Colors.accent} />
           }
           ListEmptyComponent={
             <View style={styles.emptyContainer}>
-              <Ionicons name="checkmark-done-outline" size={64} color="#D1D5DB" />
+              <Ionicons name="checkmark-done-outline" size={64} color={Colors.textMuted} />
               <Text style={styles.emptyText}>
                 {searchQuery ? 'No parcels found' : 'No delivered parcels yet'}
               </Text>
@@ -229,19 +284,19 @@ export default function DeliveredParcels() {
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>Student Details</Text>
               <TouchableOpacity onPress={() => setStudentModalVisible(false)}>
-                <Ionicons name="close" size={24} color="#6B7280" />
+                <Ionicons name="close" size={24} color={Colors.textMuted} />
               </TouchableOpacity>
             </View>
 
             {loadingStudent ? (
               <View style={styles.loadingContainer}>
-                <ActivityIndicator size="large" color="#2563EB" />
+                <ActivityIndicator size="large" color={Colors.accentBlue} />
               </View>
             ) : selectedStudent ? (
               <View style={styles.studentDetailsContainer}>
                 <View style={styles.detailRow}>
                   <View style={styles.detailIconContainer}>
-                    <Ionicons name="person" size={24} color="#2563EB" />
+                    <Ionicons name="person" size={24} color={Colors.accentBlue} />
                   </View>
                   <View style={styles.detailTextContainer}>
                     <Text style={styles.detailLabel}>Name</Text>
@@ -251,7 +306,7 @@ export default function DeliveredParcels() {
 
                 <View style={styles.detailRow}>
                   <View style={styles.detailIconContainer}>
-                    <Ionicons name="card" size={24} color="#2563EB" />
+                    <Ionicons name="card" size={24} color={Colors.accentBlue} />
                   </View>
                   <View style={styles.detailTextContainer}>
                     <Text style={styles.detailLabel}>Roll Number</Text>
@@ -261,7 +316,7 @@ export default function DeliveredParcels() {
 
                 <View style={styles.detailRow}>
                   <View style={styles.detailIconContainer}>
-                    <Ionicons name="mail" size={24} color="#2563EB" />
+                    <Ionicons name="mail" size={24} color={Colors.accentBlue} />
                   </View>
                   <View style={styles.detailTextContainer}>
                     <Text style={styles.detailLabel}>Email</Text>
@@ -272,7 +327,7 @@ export default function DeliveredParcels() {
                 {selectedStudent.contact_number && (
                   <View style={styles.detailRow}>
                     <View style={styles.detailIconContainer}>
-                      <Ionicons name="call" size={24} color="#2563EB" />
+                      <Ionicons name="call" size={24} color={Colors.accentBlue} />
                     </View>
                     <View style={styles.detailTextContainer}>
                       <Text style={styles.detailLabel}>Contact Number</Text>
@@ -283,7 +338,7 @@ export default function DeliveredParcels() {
 
                 <View style={styles.detailRow}>
                   <View style={styles.detailIconContainer}>
-                    <Ionicons name="home" size={24} color="#2563EB" />
+                    <Ionicons name="home" size={24} color={Colors.accentBlue} />
                   </View>
                   <View style={styles.detailTextContainer}>
                     <Text style={styles.detailLabel}>Room Number</Text>
@@ -293,7 +348,7 @@ export default function DeliveredParcels() {
 
                 <View style={styles.detailRow}>
                   <View style={styles.detailIconContainer}>
-                    <Ionicons name="business" size={24} color="#2563EB" />
+                    <Ionicons name="business" size={24} color={Colors.accentBlue} />
                   </View>
                   <View style={styles.detailTextContainer}>
                     <Text style={styles.detailLabel}>Hostel</Text>
@@ -315,21 +370,20 @@ export default function DeliveredParcels() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F9FAFB',
+    backgroundColor: Colors.bg,
   },
   content: {
     flex: 1,
-    padding: 16,
+    paddingHorizontal: 16,
+    paddingTop: 4,
+    paddingBottom: 16,
   },
   searchContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#FFFFFF',
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: '#E5E7EB',
+    ...GlassInput,
     paddingHorizontal: 12,
-    marginBottom: 16,
+    marginBottom: 8,
     height: 48,
   },
   searchIcon: {
@@ -338,18 +392,18 @@ const styles = StyleSheet.create({
   searchInput: {
     flex: 1,
     fontSize: 14,
-    color: '#111827',
+    color: Colors.textPrimary,
   },
   contentHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 16,
+    marginBottom: 2,
   },
   sectionTitle: {
     fontSize: Platform.OS === 'android' ? 19 : 20,
     fontWeight: '700',
-    color: '#111827',
+    color: Colors.textPrimary,
     letterSpacing: 0.2,
     lineHeight: Platform.OS === 'android' ? 22 : 24,
     includeFontPadding: false,
@@ -360,15 +414,10 @@ const styles = StyleSheet.create({
     paddingBottom: 16,
   },
   parcelCard: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 12,
+    ...GlassCard,
+    height: STACK_CARD_HEIGHT,
     padding: 16,
-    marginBottom: 12,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 4,
-    elevation: 2,
+    overflow: 'hidden',
   },
   parcelHeader: {
     flexDirection: 'row',
@@ -384,7 +433,7 @@ const styles = StyleSheet.create({
   roomNumber: {
     fontSize: 16,
     fontWeight: '600',
-    color: '#111827',
+    color: Colors.textPrimary,
   },
   deliveredBadge: {
     flexDirection: 'row',
@@ -393,12 +442,12 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
     paddingVertical: 4,
     borderRadius: 6,
-    backgroundColor: '#F0FDF4',
+    backgroundColor: Colors.deliveredBg,
   },
   deliveredText: {
     fontSize: 12,
     fontWeight: '600',
-    color: '#16A34A',
+    color: Colors.delivered,
   },
   studentInfo: {
     flexDirection: 'row',
@@ -408,20 +457,20 @@ const styles = StyleSheet.create({
   },
   studentName: {
     fontSize: 14,
-    color: '#374151',
+    color: Colors.textSecondary,
   },
   rollNumber: {
     fontSize: 12,
-    color: '#6B7280',
+    color: Colors.textMuted,
   },
   description: {
     fontSize: 14,
-    color: '#6B7280',
+    color: Colors.textMuted,
     marginBottom: 12,
   },
   dateInfo: {
     borderTopWidth: 1,
-    borderTopColor: '#E5E7EB',
+    borderTopColor: Colors.surfaceBorder,
     paddingTop: 12,
     gap: 6,
     marginBottom: 8,
@@ -434,15 +483,15 @@ const styles = StyleSheet.create({
   dateLabel: {
     fontSize: 12,
     fontWeight: '600',
-    color: '#6B7280',
+    color: Colors.textSecondary,
   },
   dateValue: {
     fontSize: 12,
-    color: '#9CA3AF',
+    color: Colors.textMuted,
   },
   tapHint: {
     fontSize: 12,
-    color: '#2563EB',
+    color: Colors.accentBlue,
     fontStyle: 'italic',
     textAlign: 'center',
   },
@@ -454,14 +503,14 @@ const styles = StyleSheet.create({
   },
   emptyText: {
     fontSize: 16,
-    color: '#9CA3AF',
+    color: Colors.textMuted,
     marginTop: 16,
   },
   inlineError: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
-    backgroundColor: '#FEE2E2',
+    backgroundColor: Colors.accentRedDim,
     borderRadius: 10,
     paddingHorizontal: 12,
     paddingVertical: 10,
@@ -470,18 +519,20 @@ const styles = StyleSheet.create({
   inlineErrorText: {
     flex: 1,
     fontSize: 13,
-    color: '#B91C1C',
+    color: Colors.accentRed,
   },
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    backgroundColor: Colors.overlay,
     justifyContent: 'center',
     alignItems: 'center',
     padding: 24,
   },
   modalContent: {
-    backgroundColor: '#FFFFFF',
+    backgroundColor: '#1A1A2E',
     borderRadius: 24,
+    borderWidth: 1,
+    borderColor: Colors.surfaceBorder,
     padding: 24,
     width: '100%',
     maxWidth: 400,
@@ -495,7 +546,7 @@ const styles = StyleSheet.create({
   modalTitle: {
     fontSize: 20,
     fontWeight: 'bold',
-    color: '#111827',
+    color: Colors.textPrimary,
   },
   loadingContainer: {
     padding: 40,
@@ -508,14 +559,16 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     padding: 12,
-    backgroundColor: '#F9FAFB',
+    backgroundColor: Colors.surface,
     borderRadius: 12,
+    borderWidth: 1,
+    borderColor: Colors.surfaceBorder,
   },
   detailIconContainer: {
     width: 48,
     height: 48,
     borderRadius: 24,
-    backgroundColor: '#EFF6FF',
+    backgroundColor: Colors.accentBlueDim,
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: 12,
@@ -526,16 +579,16 @@ const styles = StyleSheet.create({
   detailLabel: {
     fontSize: 12,
     fontWeight: '600',
-    color: '#6B7280',
+    color: Colors.textMuted,
     marginBottom: 4,
   },
   detailValue: {
     fontSize: 16,
-    color: '#111827',
+    color: Colors.textPrimary,
   },
   noDataText: {
     textAlign: 'center',
-    color: '#9CA3AF',
+    color: Colors.textMuted,
     fontSize: 14,
     padding: 24,
   },

@@ -2,6 +2,7 @@ import { View, Text, StyleSheet, ActivityIndicator } from 'react-native';
 import { useEffect } from 'react';
 import { useRouter } from 'expo-router';
 import { useAuthStore } from '../store/authStore';
+import { Colors } from '../utils/theme';
 
 export default function Index() {
   const router = useRouter();
@@ -10,7 +11,6 @@ export default function Index() {
   useEffect(() => {
     if (!isLoading) {
       if (isAuthenticated && user) {
-        // Navigate based on role
         if (user.role === 'GUARD') {
           router.replace('/guard-dashboard');
         } else if (user.role === 'STUDENT') {
@@ -26,7 +26,7 @@ export default function Index() {
 
   return (
     <View style={styles.container}>
-      <ActivityIndicator size="large" color="#4F46E5" />
+      <ActivityIndicator size="large" color={Colors.accent} />
       <Text style={styles.text}>Loading...</Text>
     </View>
   );
@@ -35,13 +35,13 @@ export default function Index() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F9FAFB',
+    backgroundColor: Colors.bg,
     alignItems: 'center',
     justifyContent: 'center',
   },
   text: {
     marginTop: 16,
     fontSize: 16,
-    color: '#6B7280',
+    color: Colors.textSecondary,
   },
 });

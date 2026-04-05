@@ -4,6 +4,8 @@ import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useState, useEffect } from 'react';
+import { Colors, GlassCard } from '../utils/theme';
+import AnimatedCard from '../components/AnimatedCard';
 
 export default function HostelSelection() {
   const router = useRouter();
@@ -20,8 +22,6 @@ export default function HostelSelection() {
 
   const handleHostelSelect = async (hostelType: 'BOYS' | 'GIRLS') => {
     await AsyncStorage.setItem('selected_hostel', hostelType);
-    
-    // Navigate based on role
     if (selectedRole === 'GUARD') {
       router.push('/guard-login');
     } else {
@@ -33,7 +33,7 @@ export default function HostelSelection() {
     <SafeAreaView style={styles.container}>
       <View style={styles.content}>
         <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
-          <Ionicons name="arrow-back" size={24} color="#111827" />
+          <Ionicons name="arrow-back" size={24} color={Colors.textPrimary} />
         </TouchableOpacity>
 
         <View style={styles.header}>
@@ -42,29 +42,33 @@ export default function HostelSelection() {
         </View>
 
         <View style={styles.cardContainer}>
-          <TouchableOpacity
-            style={styles.card}
-            onPress={() => handleHostelSelect('BOYS')}
-            activeOpacity={0.7}
-          >
-            <View style={[styles.iconContainer, { backgroundColor: '#DBEAFE' }]}>
-              <Ionicons name="male" size={40} color="#2563EB" />
-            </View>
-            <Text style={styles.cardTitle}>Boys Hostel</Text>
-            <Ionicons name="chevron-forward" size={24} color="#9CA3AF" style={styles.chevron} />
-          </TouchableOpacity>
+          <AnimatedCard index={0}>
+            <TouchableOpacity
+              style={styles.card}
+              onPress={() => handleHostelSelect('BOYS')}
+              activeOpacity={0.7}
+            >
+              <View style={[styles.iconContainer, { backgroundColor: Colors.accentBlueDim }]}>
+                <Ionicons name="male" size={40} color={Colors.accentBlue} />
+              </View>
+              <Text style={styles.cardTitle}>Boys Hostel</Text>
+              <Ionicons name="chevron-forward" size={24} color={Colors.textMuted} style={styles.chevron} />
+            </TouchableOpacity>
+          </AnimatedCard>
 
-          <TouchableOpacity
-            style={styles.card}
-            onPress={() => handleHostelSelect('GIRLS')}
-            activeOpacity={0.7}
-          >
-            <View style={[styles.iconContainer, { backgroundColor: '#FCE7F3' }]}>
-              <Ionicons name="female" size={40} color="#DB2777" />
-            </View>
-            <Text style={styles.cardTitle}>Girls Hostel</Text>
-            <Ionicons name="chevron-forward" size={24} color="#9CA3AF" style={styles.chevron} />
-          </TouchableOpacity>
+          <AnimatedCard index={1}>
+            <TouchableOpacity
+              style={styles.card}
+              onPress={() => handleHostelSelect('GIRLS')}
+              activeOpacity={0.7}
+            >
+              <View style={[styles.iconContainer, { backgroundColor: 'rgba(219,39,119,0.15)' }]}>
+                <Ionicons name="female" size={40} color="#F472B6" />
+              </View>
+              <Text style={styles.cardTitle}>Girls Hostel</Text>
+              <Ionicons name="chevron-forward" size={24} color={Colors.textMuted} style={styles.chevron} />
+            </TouchableOpacity>
+          </AnimatedCard>
         </View>
       </View>
     </SafeAreaView>
@@ -74,7 +78,7 @@ export default function HostelSelection() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F9FAFB',
+    backgroundColor: Colors.bg,
   },
   content: {
     flex: 1,
@@ -84,7 +88,9 @@ const styles = StyleSheet.create({
     width: 40,
     height: 40,
     borderRadius: 20,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: Colors.surface,
+    borderWidth: 1,
+    borderColor: Colors.surfaceBorder,
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 24,
@@ -95,12 +101,12 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 32,
     fontWeight: 'bold',
-    color: '#111827',
+    color: Colors.textPrimary,
     marginBottom: 8,
   },
   description: {
     fontSize: 16,
-    color: '#6B7280',
+    color: Colors.textSecondary,
   },
   cardContainer: {
     gap: 16,
@@ -108,19 +114,13 @@ const styles = StyleSheet.create({
   card: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#FFFFFF',
-    borderRadius: 16,
+    ...GlassCard,
     padding: 24,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 8,
-    elevation: 2,
   },
   iconContainer: {
     width: 72,
     height: 72,
-    borderRadius: 16,
+    borderRadius: 18,
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: 16,
@@ -129,7 +129,7 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: 20,
     fontWeight: '600',
-    color: '#111827',
+    color: Colors.textPrimary,
   },
   chevron: {
     marginLeft: 8,

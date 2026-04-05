@@ -1,33 +1,41 @@
 import { Tabs } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import { useEffect } from 'react';
+import { registerForPushNotificationsAsync } from '../../utils/notifications';
+import { Colors } from '../../utils/theme';
 
 export default function StudentDashboardLayout() {
+  useEffect(() => {
+    registerForPushNotificationsAsync();
+  }, []);
   return (
     <Tabs
       screenOptions={{
-        tabBarActiveTintColor: '#16A34A',
-        tabBarInactiveTintColor: '#9CA3AF',
+        tabBarActiveTintColor: Colors.accentGreen,
+        tabBarInactiveTintColor: Colors.textMuted,
         tabBarStyle: {
-          backgroundColor: '#FFFFFF',
+          backgroundColor: Colors.tabBar,
           borderTopWidth: 1,
-          borderTopColor: '#E5E7EB',
+          borderTopColor: Colors.tabBarBorder,
           height: 60,
           paddingBottom: 8,
           paddingTop: 8,
         },
         headerStyle: {
-          backgroundColor: '#16A34A',
+          backgroundColor: Colors.bg,
         },
-        headerTintColor: '#FFFFFF',
+        headerTintColor: Colors.textPrimary,
         headerTitleStyle: {
           fontWeight: 'bold',
         },
+        headerShadowVisible: false,
       }}
     >
       <Tabs.Screen
         name="index"
         options={{
-          title: 'All Parcels',
+          title: 'All Parcel',
+            headerShown: false,
           tabBarIcon: ({ color, size }) => (
             <Ionicons name="list-outline" size={size} color={color} />
           ),
@@ -37,6 +45,7 @@ export default function StudentDashboardLayout() {
         name="my-parcels"
         options={{
           title: 'My Parcels',
+          headerShown: false,
           tabBarIcon: ({ color, size }) => (
             <Ionicons name="cube-outline" size={size} color={color} />
           ),

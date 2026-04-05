@@ -17,6 +17,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useEffect, useState } from 'react';
 import api from '../utils/api';
 import { useAuthStore } from '../store/authStore';
+import { Colors, GlassCard, GlassInput } from '../utils/theme';
 
 interface AutoDeleteStatus {
   enabled: boolean;
@@ -261,7 +262,7 @@ export default function AdminPanel() {
             <Text style={styles.headerSubtitle}>Add Guards and Students</Text>
           </View>
           <TouchableOpacity style={styles.logoutButton} onPress={handleLogout}>
-            <Ionicons name="log-out-outline" size={24} color="#DC2626" />
+            <Ionicons name="log-out-outline" size={24} color={Colors.accentRed} />
           </TouchableOpacity>
         </View>
 
@@ -280,7 +281,7 @@ export default function AdminPanel() {
                 <Ionicons
                   name="shield-checkmark"
                   size={24}
-                  color={selectedRole === 'GUARD' ? '#2563EB' : '#9CA3AF'}
+                  color={selectedRole === 'GUARD' ? Colors.accentBlue : Colors.textMuted}
                 />
                 <Text
                   style={[
@@ -302,7 +303,7 @@ export default function AdminPanel() {
                 <Ionicons
                   name="person"
                   size={24}
-                  color={selectedRole === 'STUDENT' ? '#16A34A' : '#9CA3AF'}
+                  color={selectedRole === 'STUDENT' ? Colors.accentGreen : Colors.textMuted}
                 />
                 <Text
                   style={[
@@ -371,7 +372,7 @@ export default function AdminPanel() {
                     placeholder="Enter guard name"
                     value={guardName}
                     onChangeText={setGuardName}
-                    placeholderTextColor="#9CA3AF"
+                    placeholderTextColor={Colors.textMuted}
                   />
                 </View>
 
@@ -383,7 +384,7 @@ export default function AdminPanel() {
                     value={guardUsername}
                     onChangeText={setGuardUsername}
                     autoCapitalize="none"
-                    placeholderTextColor="#9CA3AF"
+                    placeholderTextColor={Colors.textMuted}
                   />
                 </View>
 
@@ -395,7 +396,7 @@ export default function AdminPanel() {
                     value={guardPassword}
                     onChangeText={setGuardPassword}
                     secureTextEntry
-                    placeholderTextColor="#9CA3AF"
+                    placeholderTextColor={Colors.textMuted}
                   />
                 </View>
               </View>
@@ -408,7 +409,7 @@ export default function AdminPanel() {
                     placeholder="Enter student name"
                     value={studentName}
                     onChangeText={setStudentName}
-                    placeholderTextColor="#9CA3AF"
+                    placeholderTextColor={Colors.textMuted}
                   />
                 </View>
 
@@ -419,7 +420,7 @@ export default function AdminPanel() {
                     placeholder="e.g., 2021001"
                     value={studentRollNumber}
                     onChangeText={setStudentRollNumber}
-                    placeholderTextColor="#9CA3AF"
+                    placeholderTextColor={Colors.textMuted}
                   />
                 </View>
 
@@ -432,7 +433,7 @@ export default function AdminPanel() {
                     onChangeText={setStudentEmail}
                     autoCapitalize="none"
                     keyboardType="email-address"
-                    placeholderTextColor="#9CA3AF"
+                    placeholderTextColor={Colors.textMuted}
                   />
                 </View>
 
@@ -443,7 +444,7 @@ export default function AdminPanel() {
                     placeholder="e.g., 101"
                     value={studentRoomNumber}
                     onChangeText={setStudentRoomNumber}
-                    placeholderTextColor="#9CA3AF"
+                    placeholderTextColor={Colors.textMuted}
                   />
                 </View>
               </View>
@@ -478,9 +479,9 @@ export default function AdminPanel() {
                 activeOpacity={0.8}
               >
                 {summaryLoading || statusLoading ? (
-                  <ActivityIndicator size="small" color="#DC2626" />
+                  <ActivityIndicator size="small" color={Colors.accentRed} />
                 ) : (
-                  <Ionicons name="refresh" size={20} color="#DC2626" />
+                  <Ionicons name="refresh" size={20} color={Colors.accentRed} />
                 )}
               </TouchableOpacity>
                 <View style={styles.autoDeleteHeader}>
@@ -553,7 +554,7 @@ export default function AdminPanel() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F9FAFB',
+    backgroundColor: Colors.bg,
   },
   keyboardView: {
     flex: 1,
@@ -564,18 +565,18 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: 24,
     paddingVertical: 16,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: Colors.bg,
     borderBottomWidth: 1,
-    borderBottomColor: '#E5E7EB',
+    borderBottomColor: Colors.surfaceBorder,
   },
   headerTitle: {
     fontSize: 24,
     fontWeight: 'bold',
-    color: '#111827',
+    color: Colors.textPrimary,
   },
   headerSubtitle: {
     fontSize: 14,
-    color: '#6B7280',
+    color: Colors.textSecondary,
     marginTop: 4,
   },
   logoutButton: {
@@ -591,12 +592,12 @@ const styles = StyleSheet.create({
   sectionTitle: {
     fontSize: 18,
     fontWeight: '600',
-    color: '#111827',
+    color: Colors.textPrimary,
     marginBottom: 16,
   },
   sectionHint: {
     fontSize: 13,
-    color: '#6B7280',
+    color: Colors.textSecondary,
     marginTop: -8,
     marginBottom: 12,
   },
@@ -605,10 +606,10 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   autoDeleteCard: {
-    backgroundColor: '#FEF2F2',
+    backgroundColor: Colors.accentRedDim,
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: '#FECACA',
+    borderColor: 'rgba(248,113,113,0.3)',
     padding: 16,
     gap: 8,
     marginBottom: 16,
@@ -624,9 +625,9 @@ const styles = StyleSheet.create({
     width: 36,
     height: 36,
     borderRadius: 18,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: Colors.surface,
     borderWidth: 1,
-    borderColor: '#FCA5A5',
+    borderColor: 'rgba(248,113,113,0.3)',
     alignItems: 'center',
     justifyContent: 'center',
     position: 'absolute',
@@ -637,29 +638,26 @@ const styles = StyleSheet.create({
   autoDeleteTitle: {
     fontSize: 15,
     fontWeight: '700',
-    color: '#991B1B',
+    color: Colors.accentRed,
   },
   autoDeleteSubtitle: {
     fontSize: 12,
-    color: '#B91C1C',
+    color: 'rgba(248,113,113,0.8)',
     marginTop: 2,
   },
   autoDeleteCountdown: {
     fontSize: 34,
     fontWeight: '700',
-    color: '#DC2626',
+    color: Colors.accentRed,
     letterSpacing: 1,
   },
   autoDeleteMeta: {
     fontSize: 12,
-    color: '#7F1D1D',
+    color: 'rgba(248,113,113,0.7)',
   },
   summaryCard: {
     flex: 1,
-    backgroundColor: '#FFFFFF',
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: '#E5E7EB',
+    ...GlassCard,
     padding: 16,
     gap: 6,
     minHeight: 170,
@@ -667,13 +665,13 @@ const styles = StyleSheet.create({
   summaryTitle: {
     fontSize: 14,
     fontWeight: '600',
-    color: '#111827',
+    color: Colors.textPrimary,
     textAlign: 'center',
   },
   summaryCount: {
     fontSize: 40,
     fontWeight: '700',
-    color: '#111827',
+    color: Colors.textPrimary,
     textAlign: 'center',
     marginTop: 6,
     marginBottom: 6,
@@ -690,21 +688,21 @@ const styles = StyleSheet.create({
     gap: 8,
     paddingVertical: 16,
     borderRadius: 12,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: Colors.surface,
     borderWidth: 2,
-    borderColor: '#E5E7EB',
+    borderColor: Colors.surfaceBorder,
   },
   roleButtonActive: {
-    borderColor: '#2563EB',
-    backgroundColor: '#EFF6FF',
+    borderColor: Colors.accent,
+    backgroundColor: Colors.accentDim,
   },
   roleButtonText: {
     fontSize: 16,
     fontWeight: '600',
-    color: '#6B7280',
+    color: Colors.textMuted,
   },
   roleButtonTextActive: {
-    color: '#2563EB',
+    color: Colors.accent,
   },
   hostelButtons: {
     flexDirection: 'row',
@@ -714,22 +712,22 @@ const styles = StyleSheet.create({
     flex: 1,
     paddingVertical: 14,
     borderRadius: 12,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: Colors.surface,
     borderWidth: 2,
-    borderColor: '#E5E7EB',
+    borderColor: Colors.surfaceBorder,
     alignItems: 'center',
   },
   hostelButtonActive: {
-    borderColor: '#6366F1',
-    backgroundColor: '#EEF2FF',
+    borderColor: Colors.accent,
+    backgroundColor: Colors.accentDim,
   },
   hostelButtonText: {
     fontSize: 15,
     fontWeight: '600',
-    color: '#6B7280',
+    color: Colors.textMuted,
   },
   hostelButtonTextActive: {
-    color: '#6366F1',
+    color: Colors.accent,
   },
   form: {
     gap: 16,
@@ -740,20 +738,17 @@ const styles = StyleSheet.create({
   inputLabel: {
     fontSize: 14,
     fontWeight: '600',
-    color: '#374151',
+    color: Colors.textSecondary,
   },
   textInput: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: '#E5E7EB',
+    ...GlassInput,
     paddingHorizontal: 16,
     paddingVertical: 14,
     fontSize: 16,
-    color: '#111827',
+    color: Colors.textPrimary,
   },
   submitButton: {
-    backgroundColor: '#6366F1',
+    backgroundColor: Colors.accent,
     borderRadius: 12,
     height: 52,
     alignItems: 'center',
@@ -769,7 +764,7 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
   },
   dangerButton: {
-    backgroundColor: '#F87171',
+    backgroundColor: Colors.accentRed,
     borderRadius: 12,
     minHeight: 48,
     alignItems: 'center',

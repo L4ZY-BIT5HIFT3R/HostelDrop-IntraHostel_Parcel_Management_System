@@ -17,6 +17,7 @@ import { useState, useEffect } from 'react';
 import api from '../utils/api';
 import { useAuthStore } from '../store/authStore';
 import ErrorPopup from '../components/ErrorPopup';
+import { Colors, GlassCard, GlassInput } from '../utils/theme';
 
 export default function GuardLogin() {
   const router = useRouter();
@@ -75,12 +76,12 @@ export default function GuardLogin() {
             AsyncStorage.removeItem('selected_hostel');
             router.replace('/role-selection');
           }}>
-            <Ionicons name="arrow-back" size={24} color="#111827" />
+            <Ionicons name="arrow-back" size={24} color={Colors.textPrimary} />
           </TouchableOpacity>
 
           <View style={styles.header}>
             <View style={styles.iconContainer}>
-              <Ionicons name="shield-checkmark" size={40} color="#2563EB" />
+              <Ionicons name="shield-checkmark" size={40} color={Colors.accentBlue} />
             </View>
             <Text style={styles.title}>Guard Login</Text>
             <Text style={styles.subtitle}>
@@ -92,14 +93,14 @@ export default function GuardLogin() {
             <View style={styles.inputContainer}>
               <Text style={styles.label}>Username</Text>
               <View style={styles.inputWrapper}>
-                <Ionicons name="person-outline" size={20} color="#9CA3AF" style={styles.inputIcon} />
+                <Ionicons name="person-outline" size={20} color={Colors.textMuted} style={styles.inputIcon} />
                 <TextInput
                   style={styles.input}
                   placeholder="Enter your username"
                   value={username}
                   onChangeText={setUsername}
                   autoCapitalize="none"
-                  placeholderTextColor="#9CA3AF"
+                  placeholderTextColor={Colors.textMuted}
                 />
               </View>
             </View>
@@ -107,14 +108,14 @@ export default function GuardLogin() {
             <View style={styles.inputContainer}>
               <Text style={styles.label}>Password</Text>
               <View style={styles.inputWrapper}>
-                <Ionicons name="lock-closed-outline" size={20} color="#9CA3AF" style={styles.inputIcon} />
+                <Ionicons name="lock-closed-outline" size={20} color={Colors.textMuted} style={styles.inputIcon} />
                 <TextInput
                   style={styles.input}
                   placeholder="Enter your password"
                   value={password}
                   onChangeText={setPassword}
                   secureTextEntry={!showPassword}
-                  placeholderTextColor="#9CA3AF"
+                  placeholderTextColor={Colors.textMuted}
                 />
                 <TouchableOpacity
                   onPress={() => setShowPassword(!showPassword)}
@@ -123,7 +124,7 @@ export default function GuardLogin() {
                   <Ionicons
                     name={showPassword ? 'eye-off-outline' : 'eye-outline'}
                     size={20}
-                    color="#9CA3AF"
+                    color={Colors.textMuted}
                   />
                 </TouchableOpacity>
               </View>
@@ -145,7 +146,6 @@ export default function GuardLogin() {
         </View>
       </KeyboardAvoidingView>
       
-      {/* Error Popup */}
       <ErrorPopup
         visible={errorVisible}
         message={errorMessage}
@@ -158,7 +158,7 @@ export default function GuardLogin() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F9FAFB',
+    backgroundColor: Colors.bg,
   },
   keyboardView: {
     flex: 1,
@@ -171,7 +171,9 @@ const styles = StyleSheet.create({
     width: 40,
     height: 40,
     borderRadius: 20,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: Colors.surface,
+    borderWidth: 1,
+    borderColor: Colors.surfaceBorder,
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 24,
@@ -184,7 +186,7 @@ const styles = StyleSheet.create({
     width: 80,
     height: 80,
     borderRadius: 40,
-    backgroundColor: '#DBEAFE',
+    backgroundColor: Colors.accentBlueDim,
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 16,
@@ -192,12 +194,12 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 28,
     fontWeight: 'bold',
-    color: '#111827',
+    color: Colors.textPrimary,
     marginBottom: 8,
   },
   subtitle: {
     fontSize: 16,
-    color: '#6B7280',
+    color: Colors.textSecondary,
   },
   form: {
     gap: 24,
@@ -208,15 +210,12 @@ const styles = StyleSheet.create({
   label: {
     fontSize: 14,
     fontWeight: '600',
-    color: '#374151',
+    color: Colors.textSecondary,
   },
   inputWrapper: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#FFFFFF',
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: '#E5E7EB',
+    ...GlassInput,
     paddingHorizontal: 16,
   },
   inputIcon: {
@@ -226,13 +225,13 @@ const styles = StyleSheet.create({
     flex: 1,
     height: 52,
     fontSize: 16,
-    color: '#111827',
+    color: Colors.textPrimary,
   },
   eyeIcon: {
     padding: 8,
   },
   loginButton: {
-    backgroundColor: '#2563EB',
+    backgroundColor: Colors.accentBlue,
     borderRadius: 12,
     height: 52,
     alignItems: 'center',

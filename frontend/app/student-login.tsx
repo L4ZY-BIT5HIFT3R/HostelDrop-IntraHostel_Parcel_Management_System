@@ -19,6 +19,7 @@ import { useState, useEffect } from 'react';
 import api from '../utils/api';
 import { useAuthStore } from '../store/authStore';
 import ErrorPopup from '../components/ErrorPopup';
+import { Colors, GlassInput } from '../utils/theme';
 
 export default function StudentLogin() {
   const router = useRouter();
@@ -49,7 +50,6 @@ export default function StudentLogin() {
 
   const handleAction = async () => {
     if (!isRegisterMode) {
-      // Login Flow
       if (!rollNumber.trim() || !password.trim()) {
         setErrorMessage('Please enter your roll number and password');
         setErrorVisible(true);
@@ -72,7 +72,6 @@ export default function StudentLogin() {
         setLoading(false);
       }
     } else {
-      // Register Flow
       if (!rollNumber.trim() || !email.trim() || !name.trim() || !roomNumber.trim() || !password.trim()) {
         setErrorMessage('Please fill in all required fields to register');
         setErrorVisible(true);
@@ -146,12 +145,12 @@ export default function StudentLogin() {
             AsyncStorage.removeItem('selected_hostel');
             router.replace('/role-selection');
           }}>
-            <Ionicons name="arrow-back" size={24} color="#111827" />
+            <Ionicons name="arrow-back" size={24} color={Colors.textPrimary} />
           </TouchableOpacity>
 
           <View style={styles.header}>
             <View style={styles.iconContainer}>
-              <Ionicons name="person" size={40} color="#16A34A" />
+              <Ionicons name="person" size={40} color={Colors.accentGreen} />
             </View>
             <Text style={styles.title}>Student Access</Text>
             <Text style={styles.subtitle}>
@@ -199,14 +198,14 @@ export default function StudentLogin() {
                 <View style={styles.inputContainer}>
                   <Text style={styles.label}>Full Name</Text>
                   <View style={styles.inputWrapper}>
-                    <Ionicons name="person-outline" size={20} color="#9CA3AF" style={styles.inputIcon} />
+                    <Ionicons name="person-outline" size={20} color={Colors.textMuted} style={styles.inputIcon} />
                     <TextInput
                       style={styles.input}
                       placeholder="Enter your full name"
                       value={name}
                       onChangeText={setName}
                       editable={!otpSent}
-                      placeholderTextColor="#9CA3AF"
+                      placeholderTextColor={Colors.textMuted}
                     />
                   </View>
                 </View>
@@ -214,14 +213,14 @@ export default function StudentLogin() {
                 <View style={styles.inputContainer}>
                   <Text style={styles.label}>Room Number</Text>
                   <View style={styles.inputWrapper}>
-                    <Ionicons name="home-outline" size={20} color="#9CA3AF" style={styles.inputIcon} />
+                    <Ionicons name="home-outline" size={20} color={Colors.textMuted} style={styles.inputIcon} />
                     <TextInput
                       style={styles.input}
                       placeholder="e.g. 101"
                       value={roomNumber}
                       onChangeText={setRoomNumber}
                       editable={!otpSent}
-                      placeholderTextColor="#9CA3AF"
+                      placeholderTextColor={Colors.textMuted}
                     />
                   </View>
                 </View>
@@ -229,7 +228,7 @@ export default function StudentLogin() {
                 <View style={styles.inputContainer}>
                   <Text style={styles.label}>Contact Number (Optional)</Text>
                   <View style={styles.inputWrapper}>
-                    <Ionicons name="call-outline" size={20} color="#9CA3AF" style={styles.inputIcon} />
+                    <Ionicons name="call-outline" size={20} color={Colors.textMuted} style={styles.inputIcon} />
                     <TextInput
                       style={styles.input}
                       placeholder="Enter mobile number"
@@ -237,7 +236,7 @@ export default function StudentLogin() {
                       onChangeText={setContactNumber}
                       keyboardType="phone-pad"
                       editable={!otpSent}
-                      placeholderTextColor="#9CA3AF"
+                      placeholderTextColor={Colors.textMuted}
                     />
                   </View>
                 </View>
@@ -247,7 +246,7 @@ export default function StudentLogin() {
             <View style={styles.inputContainer}>
               <Text style={styles.label}>Roll Number</Text>
               <View style={styles.inputWrapper}>
-                <Ionicons name="card-outline" size={20} color="#9CA3AF" style={styles.inputIcon} />
+                <Ionicons name="card-outline" size={20} color={Colors.textMuted} style={styles.inputIcon} />
                 <TextInput
                   style={styles.input}
                   placeholder="Enter your roll number"
@@ -255,7 +254,7 @@ export default function StudentLogin() {
                   onChangeText={setRollNumber}
                   autoCapitalize="characters"
                   editable={!otpSent}
-                  placeholderTextColor="#9CA3AF"
+                  placeholderTextColor={Colors.textMuted}
                 />
               </View>
             </View>
@@ -264,7 +263,7 @@ export default function StudentLogin() {
               <View style={styles.inputContainer}>
                 <Text style={styles.label}>College Email</Text>
                 <View style={styles.inputWrapper}>
-                  <Ionicons name="mail-outline" size={20} color="#9CA3AF" style={styles.inputIcon} />
+                  <Ionicons name="mail-outline" size={20} color={Colors.textMuted} style={styles.inputIcon} />
                   <TextInput
                     style={styles.input}
                     placeholder="ab.c@iiitg.ac.in"
@@ -273,7 +272,7 @@ export default function StudentLogin() {
                     autoCapitalize="none"
                     keyboardType="email-address"
                     editable={!otpSent}
-                    placeholderTextColor="#9CA3AF"
+                    placeholderTextColor={Colors.textMuted}
                   />
                 </View>
               </View>
@@ -282,7 +281,7 @@ export default function StudentLogin() {
             <View style={styles.inputContainer}>
               <Text style={styles.label}>Password</Text>
               <View style={styles.inputWrapper}>
-                <Ionicons name="lock-closed-outline" size={20} color="#9CA3AF" style={styles.inputIcon} />
+                <Ionicons name="lock-closed-outline" size={20} color={Colors.textMuted} style={styles.inputIcon} />
                 <TextInput
                   style={styles.input}
                   placeholder={isRegisterMode ? "Create a password" : "Enter your password"}
@@ -290,7 +289,7 @@ export default function StudentLogin() {
                   onChangeText={setPassword}
                   secureTextEntry
                   editable={!otpSent}
-                  placeholderTextColor="#9CA3AF"
+                  placeholderTextColor={Colors.textMuted}
                 />
               </View>
             </View>
@@ -299,7 +298,7 @@ export default function StudentLogin() {
               <View style={styles.inputContainer}>
                 <Text style={styles.label}>Enter OTP</Text>
                 <View style={styles.inputWrapper}>
-                  <Ionicons name="key-outline" size={20} color="#9CA3AF" style={styles.inputIcon} />
+                  <Ionicons name="key-outline" size={20} color={Colors.textMuted} style={styles.inputIcon} />
                   <TextInput
                     style={styles.input}
                     placeholder="6-digit OTP"
@@ -307,7 +306,7 @@ export default function StudentLogin() {
                     onChangeText={setOtp}
                     keyboardType="number-pad"
                     maxLength={6}
-                    placeholderTextColor="#9CA3AF"
+                    placeholderTextColor={Colors.textMuted}
                   />
                 </View>
               </View>
@@ -371,7 +370,7 @@ export default function StudentLogin() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F9FAFB',
+    backgroundColor: Colors.bg,
   },
   keyboardView: {
     flex: 1,
@@ -384,7 +383,9 @@ const styles = StyleSheet.create({
     width: 40,
     height: 40,
     borderRadius: 20,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: Colors.surface,
+    borderWidth: 1,
+    borderColor: Colors.surfaceBorder,
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 24,
@@ -397,7 +398,7 @@ const styles = StyleSheet.create({
     width: 80,
     height: 80,
     borderRadius: 40,
-    backgroundColor: '#DCFCE7',
+    backgroundColor: Colors.accentGreenDim,
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 16,
@@ -405,12 +406,12 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 28,
     fontWeight: 'bold',
-    color: '#111827',
+    color: Colors.textPrimary,
     marginBottom: 8,
   },
   subtitle: {
     fontSize: 16,
-    color: '#6B7280',
+    color: Colors.textSecondary,
   },
   form: {
     gap: 24,
@@ -421,8 +422,10 @@ const styles = StyleSheet.create({
   },
   modeSwitchContainer: {
     flexDirection: 'row',
-    backgroundColor: '#E5E7EB',
+    backgroundColor: Colors.surface,
     borderRadius: 12,
+    borderWidth: 1,
+    borderColor: Colors.surfaceBorder,
     padding: 4,
   },
   modeButton: {
@@ -433,15 +436,15 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   modeButtonActive: {
-    backgroundColor: '#FFFFFF',
+    backgroundColor: Colors.accent,
   },
   modeButtonText: {
     fontSize: 14,
     fontWeight: '600',
-    color: '#6B7280',
+    color: Colors.textMuted,
   },
   modeButtonTextActive: {
-    color: '#111827',
+    color: '#FFFFFF',
   },
   inputContainer: {
     gap: 8,
@@ -449,15 +452,12 @@ const styles = StyleSheet.create({
   label: {
     fontSize: 14,
     fontWeight: '600',
-    color: '#374151',
+    color: Colors.textSecondary,
   },
   inputWrapper: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#FFFFFF',
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: '#E5E7EB',
+    ...GlassInput,
     paddingHorizontal: 16,
   },
   inputIcon: {
@@ -467,10 +467,10 @@ const styles = StyleSheet.create({
     flex: 1,
     height: 52,
     fontSize: 16,
-    color: '#111827',
+    color: Colors.textPrimary,
   },
   button: {
-    backgroundColor: '#16A34A',
+    backgroundColor: Colors.accentGreen,
     borderRadius: 12,
     height: 52,
     alignItems: 'center',
@@ -496,6 +496,6 @@ const styles = StyleSheet.create({
   resendButtonText: {
     fontSize: 14,
     fontWeight: '600',
-    color: '#16A34A',
+    color: Colors.accentGreen,
   },
 });
