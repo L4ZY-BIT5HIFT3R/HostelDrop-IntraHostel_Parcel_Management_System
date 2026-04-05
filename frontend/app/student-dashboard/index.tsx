@@ -1,21 +1,22 @@
-import React from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   View,
   Text,
   StyleSheet,
-  FlatList,
   RefreshControl,
   TouchableOpacity,
   Alert,
   TextInput,
+  Animated,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { useState, useEffect } from 'react';
 import { useRouter } from 'expo-router';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import api, { verifyQrCode, generateDelegationCode } from '../../utils/api';
 import { useAuthStore } from '../../store/authStore';
+import { Colors, GlassCard, GlassInput } from '../../utils/theme';
+import AnimatedCard, { STACK_CARD_HEIGHT, STACK_CARD_SPACING, STACK_FOCUS_OFFSET } from '../../components/AnimatedCard';
 
 interface Parcel {
   _id: string;
@@ -37,7 +38,10 @@ export default function StudentDashboardIndex() {
   const [filteredParcels, setFilteredParcels] = useState<Parcel[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [refreshing, setRefreshing] = useState(false);
-  const [loading, setLoading] = useState(true);
+  const [listHeight, setListHeight] = useState(0);
+  const [activeIndex, setActiveIndex] = useState(0);
+  const activeIndexRef = useRef(0);
+  const scrollY = useRef(new Animated.Value(0)).current;
 
   const [scanning, setScanning] = useState(false);
   const [processingScan, setProcessingScan] = useState(false);
@@ -53,7 +57,6 @@ export default function StudentDashboardIndex() {
   const fetchParcels = async () => {
     try {
       const response = await api.get(`/parcel/hostel/${user?.hostel_type}`);
-      // Filter only PENDING parcels for students
       const pendingParcels = response.data.parcels.filter(
         (p: Parcel) => ['PENDING', 'UNASSIGNED'].includes(p.status)
       );
@@ -62,7 +65,6 @@ export default function StudentDashboardIndex() {
     } catch (error) {
       console.error('Error fetching parcels:', error);
     } finally {
-      setLoading(false);
       setRefreshing(false);
     }
   };
@@ -70,6 +72,25 @@ export default function StudentDashboardIndex() {
   const handleRefresh = () => {
     setRefreshing(true);
     fetchParcels();
+  };
+
+  const getStackPadding = (height: number) => ({
+    top: Math.max(4, (height - STACK_CARD_HEIGHT) / 2 - STACK_FOCUS_OFFSET - 12),
+    bottom: Math.max(120, (height - STACK_CARD_HEIGHT) / 2 + STACK_FOCUS_OFFSET + 96),
+  });
+
+  const updateActiveIndex = (offsetY: number, viewportHeight?: number) => {
+    const height = viewportHeight ?? listHeight;
+    if (height <= 0 || filteredParcels.length === 0) return;
+    const step = STACK_CARD_HEIGHT + STACK_CARD_SPACING;
+    const { top } = getStackPadding(height);
+    const centerY = offsetY + height / 2;
+    const rawIndex = (centerY - top - STACK_CARD_HEIGHT / 2) / step;
+    const nextIndex = Math.max(0, Math.min(filteredParcels.length - 1, Math.round(rawIndex)));
+    if (nextIndex !== activeIndexRef.current) {
+      activeIndexRef.current = nextIndex;
+      setActiveIndex(nextIndex);
+    }
   };
 
   const handleSearch = (query: string) => {
@@ -113,7 +134,7 @@ export default function StudentDashboardIndex() {
     }
   };
 
-  const handleBarcodeScanned = async ({ type, data }: { type: string; data: string }) => {
+  const handleBarcodeScanned = async ({ data }: { data: string }) => {
     if (processingScan) return;
     setProcessingScan(true);
     setScanning(false);
@@ -151,51 +172,59 @@ export default function StudentDashboardIndex() {
     ]);
   };
 
-  const renderParcelItem = ({ item }: { item: Parcel }) => (
-    <View style={styles.parcelCard}>
-      <View style={styles.parcelHeader}>
-        <View style={{ flex: 1 }}>
-          {item.display_id ? (
-            <View style={{ backgroundColor: '#F3F4F6', alignSelf: 'flex-start', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4, marginBottom: 4 }}>
-              <Text style={{ fontSize: 11, fontWeight: '600', color: '#4B5563', letterSpacing: 0.5 }}>{item.display_id}</Text>
-            </View>
-          ) : null}
-          <View style={styles.parcelInfo}>
-            <Text style={styles.roomNumber}>Room {item.room_number}</Text>
-            <View style={[styles.pendingBadge, item.status === 'UNASSIGNED' && { backgroundColor: '#FEE2E2' }]}>
-              <Text style={[styles.pendingText, item.status === 'UNASSIGNED' && { color: '#DC2626' }]}>
-                {item.status}
-              </Text>
+  const renderParcelItem = ({ item, index }: { item: Parcel; index: number }) => (
+    <AnimatedCard index={index} activeIndex={activeIndex} scrollY={scrollY}>
+      <View style={styles.parcelCard}>
+        <View style={styles.parcelHeader}>
+          <View style={{ flex: 1 }}>
+            {item.display_id ? (
+              <View style={styles.displayIdBadge}>
+                <Text style={styles.displayIdText}>{item.display_id}</Text>
+              </View>
+            ) : null}
+            <View style={styles.parcelInfo}>
+              <Text style={styles.roomNumber}>Room {item.room_number}</Text>
+              <View style={[
+                styles.statusBadge,
+                item.status === 'UNASSIGNED' && { backgroundColor: Colors.unassignedBg }
+              ]}>
+                <Text style={[
+                  styles.statusText,
+                  item.status === 'UNASSIGNED' && { color: Colors.unassigned }
+                ]}>
+                  {item.status}
+                </Text>
+              </View>
             </View>
           </View>
+          <Text style={styles.date}>
+            {new Date(item.created_at).toLocaleDateString()}
+          </Text>
         </View>
-        <Text style={styles.date}>
-          {new Date(item.created_at).toLocaleDateString()}
-        </Text>
+
+        {item.student_name && (
+          <View style={styles.studentInfo}>
+            <Ionicons name="person" size={16} color={Colors.textMuted} />
+            <Text style={styles.studentName}>{item.student_name}</Text>
+            {item.roll_number && <Text style={styles.rollNumber}>({item.roll_number})</Text>}
+          </View>
+        )}
+
+        {item.description && (
+          <Text style={styles.description}>{item.description}</Text>
+        )}
+
+        {item.student_id === user?._id && item.status === 'PENDING' && (
+          <TouchableOpacity
+            style={styles.delegateButton}
+            onPress={() => handleDelegatePickup(item._id)}
+          >
+            <Ionicons name="people-outline" size={16} color="#FFF" />
+            <Text style={styles.delegateButtonText}>Delegate Pickup to Friend</Text>
+          </TouchableOpacity>
+        )}
       </View>
-
-      {item.student_name && (
-        <View style={styles.studentInfo}>
-          <Ionicons name="person" size={16} color="#6B7280" />
-          <Text style={styles.studentName}>{item.student_name}</Text>
-          {item.roll_number && <Text style={styles.rollNumber}>({item.roll_number})</Text>}
-        </View>
-      )}
-
-      {item.description && (
-        <Text style={styles.description}>{item.description}</Text>
-      )}
-
-      {item.student_id === user?._id && item.status === 'PENDING' && (
-        <TouchableOpacity
-          style={styles.delegateButton}
-          onPress={() => handleDelegatePickup(item._id)}
-        >
-          <Ionicons name="people-outline" size={16} color="#FFF" />
-          <Text style={styles.delegateButtonText}>Delegate Pickup to Friend</Text>
-        </TouchableOpacity>
-      )}
-    </View>
+    </AnimatedCard>
   );
 
   return (
@@ -208,14 +237,14 @@ export default function StudentDashboardIndex() {
             router.replace('/role-selection');
           }}
         >
-          <Ionicons name="arrow-back" size={24} color="#111827" />
+          <Ionicons name="arrow-back" size={24} color={Colors.textPrimary} />
         </TouchableOpacity>
         <View style={styles.headerTextContainer}>
           <Text style={styles.headerTitle}>All Parcels</Text>
           <Text style={styles.headerSubtitle}>{user?.hostel_type} Hostel</Text>
         </View>
         <TouchableOpacity style={styles.logoutButton} onPress={handleLogout}>
-          <Ionicons name="log-out-outline" size={24} color="#DC2626" />
+          <Ionicons name="log-out-outline" size={24} color={Colors.accentRed} />
         </TouchableOpacity>
       </View>
 
@@ -225,41 +254,71 @@ export default function StudentDashboardIndex() {
           <Text style={styles.scanButtonText}>Scan to Pickup My Parcel</Text>
         </TouchableOpacity>
 
-        <TouchableOpacity style={[styles.scanButton, { marginTop: 12, backgroundColor: '#4F46E5' }]} onPress={() => { setShowDelegateInput(true); handleStartScan(); }}>
+        <TouchableOpacity style={[styles.scanButton, { marginTop: 12,borderColor: 'rgba(147, 112, 219, 0.8)',borderWidth: 1 }]} onPress={() => { setShowDelegateInput(true); handleStartScan(); }}>
           <Ionicons name="people-outline" size={24} color="#FFF" />
           <Text style={styles.scanButtonText}>Pickup for a Friend</Text>
         </TouchableOpacity>
       </View>
 
       <View style={styles.content}>
-        {/* Search Bar */}
         <View style={styles.searchContainer}>
-          <Ionicons name="search" size={20} color="#9CA3AF" style={styles.searchIcon} />
+          <Ionicons name="search" size={20} color={Colors.textMuted} style={styles.searchIcon} />
           <TextInput
             style={styles.searchInput}
             placeholder="Search by room, roll number, or name..."
             value={searchQuery}
             onChangeText={handleSearch}
-            placeholderTextColor="#9CA3AF"
+            placeholderTextColor={Colors.textMuted}
           />
           {searchQuery.length > 0 && (
             <TouchableOpacity onPress={() => handleSearch('')}>
-              <Ionicons name="close-circle" size={20} color="#9CA3AF" />
+              <Ionicons name="close-circle" size={20} color={Colors.textMuted} />
             </TouchableOpacity>
           )}
         </View>
 
-        <FlatList
+        <Animated.FlatList
           data={filteredParcels}
+          extraData={activeIndex}
           renderItem={renderParcelItem}
           keyExtractor={(item) => item._id}
-          contentContainerStyle={styles.listContainer}
+          contentContainerStyle={[
+            styles.listContainer,
+            listHeight > 0
+              ? {
+                  paddingTop: getStackPadding(listHeight).top,
+                  paddingBottom: getStackPadding(listHeight).bottom,
+                }
+              : null,
+          ]}
+          onLayout={(event) => setListHeight(event.nativeEvent.layout.height)}
+          onScroll={Animated.event(
+            [{ nativeEvent: { contentOffset: { y: scrollY } } }],
+            { useNativeDriver: true }
+          )}
+          scrollEventThrottle={16}
+          snapToInterval={STACK_CARD_HEIGHT + STACK_CARD_SPACING}
+          snapToAlignment="center"
+          decelerationRate={0.992}
+          showsVerticalScrollIndicator={false}
+          onScrollEndDrag={(event) => {
+            updateActiveIndex(
+              event.nativeEvent.contentOffset.y,
+              event.nativeEvent.layoutMeasurement?.height
+            );
+          }}
+          onMomentumScrollEnd={(event) => {
+            updateActiveIndex(
+              event.nativeEvent.contentOffset.y,
+              event.nativeEvent.layoutMeasurement?.height
+            );
+          }}
           refreshControl={
-            <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />
+            <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={Colors.accent} />
           }
           ListEmptyComponent={
             <View style={styles.emptyContainer}>
-              <Ionicons name="cube-outline" size={64} color="#D1D5DB" />
+              <Ionicons name="cube-outline" size={64} color={Colors.textMuted} />
               <Text style={styles.emptyText}>
                 {searchQuery ? 'No parcels found' : 'No parcels available'}
               </Text>
@@ -278,37 +337,38 @@ export default function StudentDashboardIndex() {
             barcodeScannerSettings={{
               barcodeTypes: ['qr'],
             }}
-          >
-            <SafeAreaView style={{ flex: 1 }}>
-              <View style={styles.cameraHeader}>
-                <TouchableOpacity
-                  style={styles.closeCameraButton}
-                  onPress={() => { setScanning(false); setShowDelegateInput(false); setDelegatePin(''); }}
-                >
-                  <Ionicons name="close" size={28} color="#FFF" />
-                </TouchableOpacity>
-              </View>
-              <View style={styles.cameraOverlay}>
-                <View style={styles.scanFrame} />
-                <Text style={styles.scanInstruction}>
-                  Point at the Guard's QR code
-                </Text>
-                {showDelegateInput && (
-                  <View style={styles.delegatePinContainer}>
-                    <Text style={styles.delegatePinLabel}>Enter 6-Character PIN from your friend:</Text>                    <TextInput
-                      style={styles.delegatePinInput}
-                      value={delegatePin}
-                      onChangeText={setDelegatePin}
-                      placeholder="e.g. A4B92X"
-                      placeholderTextColor="#9CA3AF"
-                      autoCapitalize="characters"
-                      maxLength={6}
-                    />
-                  </View>
-                )}
-              </View>
-            </SafeAreaView>
-          </CameraView>
+          />
+          
+          <SafeAreaView style={StyleSheet.absoluteFill} pointerEvents="box-none">
+            <View style={styles.cameraHeader} pointerEvents="box-none">
+              <TouchableOpacity
+                style={styles.closeCameraButton}
+                onPress={() => { setScanning(false); setShowDelegateInput(false); setDelegatePin(''); }}
+              >
+                <Ionicons name="close" size={28} color="#FFF" />
+              </TouchableOpacity>
+            </View>
+            <View style={styles.cameraOverlay} pointerEvents="box-none">
+              <View style={styles.scanFrame} />
+              <Text style={styles.scanInstruction}>
+                Point at the Guard&apos;s QR code
+              </Text>
+              {showDelegateInput && (
+                <View style={styles.delegatePinContainer}>
+                  <Text style={styles.delegatePinLabel}>Enter 6-Character PIN from your friend:</Text>
+                  <TextInput
+                    style={styles.delegatePinInput}
+                    value={delegatePin}
+                    onChangeText={setDelegatePin}
+                    placeholder="e.g. A4B92X"
+                    placeholderTextColor={Colors.textMuted}
+                    autoCapitalize="characters"
+                    maxLength={6}
+                  />
+                </View>
+              )}
+            </View>
+          </SafeAreaView>
         </View>
       )}
     </SafeAreaView>
@@ -318,7 +378,7 @@ export default function StudentDashboardIndex() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F9FAFB',
+    backgroundColor: Colors.bg,
   },
   header: {
     flexDirection: 'row',
@@ -326,15 +386,17 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: 16,
     paddingVertical: 16,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: Colors.bg,
     borderBottomWidth: 1,
-    borderBottomColor: '#E5E7EB',
+    borderBottomColor: Colors.surfaceBorder,
   },
   backButton: {
     width: 40,
     height: 40,
     borderRadius: 20,
-    backgroundColor: '#F3F4F6',
+    backgroundColor: Colors.surface,
+    borderWidth: 1,
+    borderColor: Colors.surfaceBorder,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -345,11 +407,11 @@ const styles = StyleSheet.create({
   headerTitle: {
     fontSize: 20,
     fontWeight: 'bold',
-    color: '#111827',
+    color: Colors.textPrimary,
   },
   headerSubtitle: {
     fontSize: 12,
-    color: '#6B7280',
+    color: Colors.textSecondary,
     marginTop: 2,
   },
   logoutButton: {
@@ -357,17 +419,16 @@ const styles = StyleSheet.create({
   },
   content: {
     flex: 1,
-    padding: 16,
+    paddingHorizontal: 16,
+    paddingTop: 4,
+    paddingBottom: 16,
   },
   searchContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#FFFFFF',
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: '#E5E7EB',
+    ...GlassInput,
     paddingHorizontal: 12,
-    marginBottom: 16,
+    marginBottom: 8,
     height: 48,
   },
   searchIcon: {
@@ -376,27 +437,38 @@ const styles = StyleSheet.create({
   searchInput: {
     flex: 1,
     fontSize: 14,
-    color: '#111827',
+    color: Colors.textPrimary,
   },
   listContainer: {
     paddingBottom: 16,
   },
   parcelCard: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 12,
+    ...GlassCard,
+    height: STACK_CARD_HEIGHT,
     padding: 16,
-    marginBottom: 12,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 4,
-    elevation: 2,
+    overflow: 'hidden',
   },
   parcelHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'flex-start',
     marginBottom: 12,
+  },
+  displayIdBadge: {
+    backgroundColor: Colors.surface,
+    alignSelf: 'flex-start',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+    marginBottom: 4,
+    borderWidth: 1,
+    borderColor: Colors.surfaceBorder,
+  },
+  displayIdText: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: Colors.textSecondary,
+    letterSpacing: 0.5,
   },
   parcelInfo: {
     flexDirection: 'row',
@@ -406,22 +478,22 @@ const styles = StyleSheet.create({
   roomNumber: {
     fontSize: 16,
     fontWeight: '600',
-    color: '#111827',
+    color: Colors.textPrimary,
   },
-  pendingBadge: {
+  statusBadge: {
     paddingHorizontal: 8,
     paddingVertical: 4,
     borderRadius: 6,
-    backgroundColor: '#DBEAFE',
+    backgroundColor: Colors.pendingBg,
   },
-  pendingText: {
+  statusText: {
     fontSize: 12,
     fontWeight: '600',
-    color: '#2563EB',
+    color: Colors.pending,
   },
   date: {
     fontSize: 12,
-    color: '#9CA3AF',
+    color: Colors.textMuted,
   },
   studentInfo: {
     flexDirection: 'row',
@@ -431,15 +503,15 @@ const styles = StyleSheet.create({
   },
   studentName: {
     fontSize: 14,
-    color: '#374151',
+    color: Colors.textSecondary,
   },
   rollNumber: {
     fontSize: 12,
-    color: '#6B7280',
+    color: Colors.textMuted,
   },
   description: {
     fontSize: 14,
-    color: '#6B7280',
+    color: Colors.textMuted,
   },
   emptyContainer: {
     flex: 1,
@@ -449,11 +521,12 @@ const styles = StyleSheet.create({
   },
   emptyText: {
     fontSize: 16,
-    color: '#9CA3AF',
+    color: Colors.textMuted,
     marginTop: 16,
   },
   scanButton: {
-    backgroundColor: '#9333EA',
+    borderColor: 'rgba(129, 199, 132, 0.8)',
+    borderWidth: 1,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
@@ -501,7 +574,7 @@ const styles = StyleSheet.create({
     borderRadius: 8,
   },
   delegateButton: {
-    backgroundColor: '#F59E0B',
+    backgroundColor: Colors.accentAmber,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
@@ -538,5 +611,5 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: 'bold',
     letterSpacing: 2,
-  }
+  },
 });

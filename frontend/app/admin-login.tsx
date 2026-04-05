@@ -15,6 +15,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useState } from 'react';
 import api from '../utils/api';
 import { useAuthStore } from '../store/authStore';
+import { Colors, GlassCard, GlassInput } from '../utils/theme';
 
 export default function AdminLogin() {
   const router = useRouter();
@@ -67,12 +68,12 @@ export default function AdminLogin() {
       >
         <View style={styles.content}>
           <TouchableOpacity style={styles.backButton} onPress={() => router.replace('/role-selection')}>
-            <Ionicons name="arrow-back" size={24} color="#111827" />
+            <Ionicons name="arrow-back" size={24} color={Colors.textPrimary} />
           </TouchableOpacity>
 
           <View style={styles.header}>
             <View style={styles.iconContainer}>
-              <Ionicons name="settings" size={40} color="#DC2626" />
+              <Ionicons name="settings" size={40} color={Colors.accentRed} />
             </View>
             <Text style={styles.title}>Admin Login</Text>
             <Text style={styles.subtitle}>Manage users and parcels</Text>
@@ -81,9 +82,8 @@ export default function AdminLogin() {
           <View style={styles.form}>
             <View style={styles.inputContainer}>
               <Text style={styles.label}>Email</Text>
-              <View style={styles.inputWrapper}
-              >
-                <Ionicons name="mail-outline" size={20} color="#9CA3AF" style={styles.inputIcon} />
+              <View style={styles.inputWrapper}>
+                <Ionicons name="mail-outline" size={20} color={Colors.textMuted} style={styles.inputIcon} />
                 <TextInput
                   style={styles.input}
                   placeholder="admin@hostel.local"
@@ -91,7 +91,7 @@ export default function AdminLogin() {
                   onChangeText={setEmail}
                   autoCapitalize="none"
                   keyboardType="email-address"
-                  placeholderTextColor="#9CA3AF"
+                  placeholderTextColor={Colors.textMuted}
                 />
               </View>
             </View>
@@ -99,14 +99,14 @@ export default function AdminLogin() {
             <View style={styles.inputContainer}>
               <Text style={styles.label}>Password</Text>
               <View style={styles.inputWrapper}>
-                <Ionicons name="lock-closed-outline" size={20} color="#9CA3AF" style={styles.inputIcon} />
+                <Ionicons name="lock-closed-outline" size={20} color={Colors.textMuted} style={styles.inputIcon} />
                 <TextInput
                   style={styles.input}
                   placeholder="Enter your password"
                   value={password}
                   onChangeText={setPassword}
                   secureTextEntry={!showPassword}
-                  placeholderTextColor="#9CA3AF"
+                  placeholderTextColor={Colors.textMuted}
                 />
                 <TouchableOpacity
                   onPress={() => setShowPassword(!showPassword)}
@@ -115,7 +115,7 @@ export default function AdminLogin() {
                   <Ionicons
                     name={showPassword ? 'eye-off-outline' : 'eye-outline'}
                     size={20}
-                    color="#9CA3AF"
+                    color={Colors.textMuted}
                   />
                 </TouchableOpacity>
               </View>
@@ -123,7 +123,7 @@ export default function AdminLogin() {
 
             {errorMessage ? (
               <View style={styles.inlineError}>
-                <Ionicons name="alert-circle" size={16} color="#DC2626" />
+                <Ionicons name="alert-circle" size={16} color={Colors.accentRed} />
                 <Text style={styles.inlineErrorText}>{errorMessage}</Text>
               </View>
             ) : null}
@@ -150,7 +150,7 @@ export default function AdminLogin() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F9FAFB',
+    backgroundColor: Colors.bg,
   },
   keyboardView: {
     flex: 1,
@@ -163,7 +163,9 @@ const styles = StyleSheet.create({
     width: 40,
     height: 40,
     borderRadius: 20,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: Colors.surface,
+    borderWidth: 1,
+    borderColor: Colors.surfaceBorder,
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 24,
@@ -176,7 +178,7 @@ const styles = StyleSheet.create({
     width: 80,
     height: 80,
     borderRadius: 40,
-    backgroundColor: '#FEE2E2',
+    backgroundColor: Colors.accentRedDim,
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 16,
@@ -184,12 +186,12 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 28,
     fontWeight: 'bold',
-    color: '#111827',
+    color: Colors.textPrimary,
     marginBottom: 8,
   },
   subtitle: {
     fontSize: 16,
-    color: '#6B7280',
+    color: Colors.textSecondary,
   },
   form: {
     gap: 20,
@@ -200,15 +202,12 @@ const styles = StyleSheet.create({
   label: {
     fontSize: 14,
     fontWeight: '600',
-    color: '#374151',
+    color: Colors.textSecondary,
   },
   inputWrapper: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#FFFFFF',
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: '#E5E7EB',
+    ...GlassInput,
     paddingHorizontal: 16,
   },
   inputIcon: {
@@ -218,7 +217,7 @@ const styles = StyleSheet.create({
     flex: 1,
     height: 50,
     fontSize: 16,
-    color: '#111827',
+    color: Colors.textPrimary,
   },
   eyeIcon: {
     padding: 8,
@@ -227,18 +226,18 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
-    backgroundColor: '#FEE2E2',
+    backgroundColor: Colors.accentRedDim,
     borderRadius: 8,
     paddingHorizontal: 10,
     paddingVertical: 8,
   },
   inlineErrorText: {
-    color: '#B91C1C',
+    color: Colors.accentRed,
     fontSize: 12,
     flex: 1,
   },
   loginButton: {
-    backgroundColor: '#DC2626',
+    backgroundColor: Colors.accentRed,
     borderRadius: 12,
     height: 52,
     alignItems: 'center',

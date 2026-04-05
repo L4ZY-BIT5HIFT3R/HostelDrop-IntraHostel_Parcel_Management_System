@@ -3,6 +3,8 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { Colors, GlassCard } from '../utils/theme';
+import AnimatedCard from '../components/AnimatedCard';
 
 export default function RoleSelection() {
   const router = useRouter();
@@ -21,56 +23,62 @@ export default function RoleSelection() {
       <View style={styles.content}>
         <View style={styles.header}>
           <Text style={styles.title}>Welcome to</Text>
-          <Text style={styles.subtitle}>Hostel Parcel Management</Text>
+          <Text style={styles.subtitle}>Hostel Parcel{'\n'}Management</Text>
         </View>
 
         <View style={styles.cardContainer}>
           <Text style={styles.label}>Select Your Role</Text>
           
-          <TouchableOpacity
-            style={styles.card}
-            onPress={() => handleRoleSelect('GUARD')}
-            activeOpacity={0.7}
-          >
-            <View style={[styles.iconContainer, { backgroundColor: '#DBEAFE' }]}>
-              <Ionicons name="shield-checkmark" size={32} color="#2563EB" />
-            </View>
-            <View style={styles.cardContent}>
-              <Text style={styles.cardTitle}>Guard</Text>
-              <Text style={styles.cardDescription}>Manage parcels and deliveries</Text>
-            </View>
-            <Ionicons name="chevron-forward" size={24} color="#9CA3AF" />
-          </TouchableOpacity>
+          <AnimatedCard index={0}>
+            <TouchableOpacity
+              style={styles.card}
+              onPress={() => handleRoleSelect('GUARD')}
+              activeOpacity={0.7}
+            >
+              <View style={[styles.iconContainer, { backgroundColor: Colors.accentBlueDim }]}>
+                <Ionicons name="shield-checkmark" size={32} color={Colors.accentBlue} />
+              </View>
+              <View style={styles.cardContent}>
+                <Text style={styles.cardTitle}>Guard</Text>
+                <Text style={styles.cardDescription}>Manage parcels and deliveries</Text>
+              </View>
+              <Ionicons name="chevron-forward" size={24} color={Colors.textMuted} />
+            </TouchableOpacity>
+          </AnimatedCard>
 
-          <TouchableOpacity
-            style={styles.card}
-            onPress={() => handleRoleSelect('STUDENT')}
-            activeOpacity={0.7}
-          >
-            <View style={[styles.iconContainer, { backgroundColor: '#DCFCE7' }]}>
-              <Ionicons name="person" size={32} color="#16A34A" />
-            </View>
-            <View style={styles.cardContent}>
-              <Text style={styles.cardTitle}>Student</Text>
-              <Text style={styles.cardDescription}>View your parcels</Text>
-            </View>
-            <Ionicons name="chevron-forward" size={24} color="#9CA3AF" />
-          </TouchableOpacity>
+          <AnimatedCard index={1}>
+            <TouchableOpacity
+              style={styles.card}
+              onPress={() => handleRoleSelect('STUDENT')}
+              activeOpacity={0.7}
+            >
+              <View style={[styles.iconContainer, { backgroundColor: Colors.accentGreenDim }]}>
+                <Ionicons name="person" size={32} color={Colors.accentGreen} />
+              </View>
+              <View style={styles.cardContent}>
+                <Text style={styles.cardTitle}>Student</Text>
+                <Text style={styles.cardDescription}>View your parcels</Text>
+              </View>
+              <Ionicons name="chevron-forward" size={24} color={Colors.textMuted} />
+            </TouchableOpacity>
+          </AnimatedCard>
 
-          <TouchableOpacity
-            style={styles.card}
-            onPress={handleAdminSelect}
-            activeOpacity={0.7}
-          >
-            <View style={[styles.iconContainer, { backgroundColor: '#FEE2E2' }]}>
-              <Ionicons name="settings" size={32} color="#DC2626" />
-            </View>
-            <View style={styles.cardContent}>
-              <Text style={styles.cardTitle}>Admin</Text>
-              <Text style={styles.cardDescription}>Manage users and parcels</Text>
-            </View>
-            <Ionicons name="chevron-forward" size={24} color="#9CA3AF" />
-          </TouchableOpacity>
+          <AnimatedCard index={2}>
+            <TouchableOpacity
+              style={styles.card}
+              onPress={handleAdminSelect}
+              activeOpacity={0.7}
+            >
+              <View style={[styles.iconContainer, { backgroundColor: Colors.accentRedDim }]}>
+                <Ionicons name="settings" size={32} color={Colors.accentRed} />
+              </View>
+              <View style={styles.cardContent}>
+                <Text style={styles.cardTitle}>Admin</Text>
+                <Text style={styles.cardDescription}>Manage users and parcels</Text>
+              </View>
+              <Ionicons name="chevron-forward" size={24} color={Colors.textMuted} />
+            </TouchableOpacity>
+          </AnimatedCard>
         </View>
       </View>
     </SafeAreaView>
@@ -80,7 +88,7 @@ export default function RoleSelection() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F9FAFB',
+    backgroundColor: Colors.bg,
   },
   content: {
     flex: 1,
@@ -93,13 +101,13 @@ const styles = StyleSheet.create({
   },
   title: {
     fontSize: 20,
-    color: '#6B7280',
+    color: Colors.textSecondary,
     marginBottom: 8,
   },
   subtitle: {
     fontSize: 28,
     fontWeight: 'bold',
-    color: '#111827',
+    color: Colors.textPrimary,
     textAlign: 'center',
   },
   cardContainer: {
@@ -108,25 +116,19 @@ const styles = StyleSheet.create({
   label: {
     fontSize: 16,
     fontWeight: '600',
-    color: '#374151',
+    color: Colors.textSecondary,
     marginBottom: 8,
   },
   card: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#FFFFFF',
-    borderRadius: 16,
+    ...GlassCard,
     padding: 20,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 8,
-    elevation: 2,
   },
   iconContainer: {
     width: 56,
     height: 56,
-    borderRadius: 12,
+    borderRadius: 14,
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: 16,
@@ -137,11 +139,11 @@ const styles = StyleSheet.create({
   cardTitle: {
     fontSize: 18,
     fontWeight: '600',
-    color: '#111827',
+    color: Colors.textPrimary,
     marginBottom: 4,
   },
   cardDescription: {
     fontSize: 14,
-    color: '#6B7280',
+    color: Colors.textSecondary,
   },
 });

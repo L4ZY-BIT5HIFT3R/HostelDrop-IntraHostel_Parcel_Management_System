@@ -25,6 +25,7 @@ from email.mime.multipart import MIMEMultipart
 # from google.oauth2.credentials import Credentials
 # from googleapiclient.discovery import build
 import base64
+import httpx
 
 # Configure logging early so startup config warnings are visible.
 logging.basicConfig(
@@ -200,6 +201,9 @@ class VerifyParcelOTPRequest(BaseModel):
     parcel_id: str
     otp_code: str
 
+class UpdateExpoTokenRequest(BaseModel):
+    expo_push_token: str
+
 # ============= QR Code Pickup Models =============
 
 class GenerateQRRequest(BaseModel):
@@ -334,6 +338,44 @@ def get_cors_origins() -> List[str]:
 
     logger.warning("CORS_ORIGINS not set. Allowing all origins in development.")
     return ["*"]
+
+async def send_expo_push_notification(tokens: List[str], title: str, body: str, data: Optional[dict] = None):
+    """Send Expo Push Notifications"""
+    if not tokens:
+        return
+    
+    messages = []
+    for token in tokens:
+        if not token or not str(token).startswith("ExponentPushToken"):
+            continue
+        msg = {
+            "to": token,
+            "sound": "default",
+            "title": title,
+            "body": body,
+        }
+        if data:
+            msg["data"] = data
+        messages.append(msg)
+    
+    if not messages:
+        return
+
+    try:
+        async with httpx.AsyncClient() as client:
+            response = await client.post(
+                'https://exp.host/--/api/v2/push/send',
+                headers={
+                    'Accept': 'application/json',
+                    'Accept-encoding': 'gzip, deflate',
+                    'Content-Type': 'application/json',
+                },
+                json=messages
+            )
+            response.raise_for_status()
+            logger.info("Sent %d Expo push notifications successfully", len(messages))
+    except Exception as e:
+        logger.warning("Failed to send Expo push notifications: %s", str(e))
 
 async def send_email_otp(email: str, otp_code: str):
     """Send OTP via Gmail SMTP with App Password"""
@@ -689,6 +731,18 @@ async def student_register_verify_otp(request: StudentRegisterVerify):
         "user": student_doc
     }
 
+@api_router.put("/auth/student/expo-token")
+async def update_expo_token(request: UpdateExpoTokenRequest, current_user: dict = Depends(get_current_user)):
+    """Update the Expo push token for the logged-in student"""
+    if current_user["role"] != UserRole.STUDENT:
+        raise HTTPException(status_code=403, detail="Only students can update their push token")
+    
+    await db.users.update_one(
+        {"_id": parse_object_id(current_user["_id"], "user ID")},
+        {"$set": {"expoPushToken": request.expo_push_token}}
+    )
+    return {"message": "Push token updated successfully"}
+
 # ============= Admin Routes =============
 
 @api_router.post("/admin/add-user")
@@ -826,15 +880,6 @@ async def add_parcel(request: AddParcelRequest, background_tasks: BackgroundTask
             parcel_data["student_id"] = str(student["_id"])
             parcel_data["student_name"] = request.student_name or student["name"]
             parcel_data["student_email"] = student["email"]
-            
-            # Send notification email to student in the background
-            async def safe_send_notification(email, name, room):
-                try:
-                    await send_parcel_notification(email, name, room)
-                except Exception as e:
-                    logger.warning("Failed to send notification email (Background): %s", str(e))
-                    
-            background_tasks.add_task(safe_send_notification, student["email"], student["name"], request.room_number)
     else:
         # Only UNASSIGNED if no roll number provided
         parcel_data["status"] = ParcelStatus.UNASSIGNED
@@ -842,6 +887,44 @@ async def add_parcel(request: AddParcelRequest, background_tasks: BackgroundTask
     
     result = await db.parcels.insert_one(parcel_data)
     parcel_data["_id"] = str(result.inserted_id)
+    
+    if request.roll_number:
+        if student:
+            # Send notification email to student in the background
+            async def safe_send_notification(email, name, room, push_token, parcel_id):
+                try:
+                    await send_parcel_notification(email, name, room)
+                except Exception as e:
+                    logger.warning("Failed to send notification email (Background): %s", str(e))
+                if push_token:
+                    await send_expo_push_notification(
+                        [push_token],
+                        "📦 Parcel Arrived!",
+                        "Your parcel is now at the reception.",
+                        {"parcelId": str(parcel_id)}
+                    )
+                    
+            background_tasks.add_task(safe_send_notification, student["email"], student["name"], request.room_number, student.get("expoPushToken"), parcel_data["_id"])
+    else:
+        # Broadcast to room
+        async def broadcast_to_room(room_number, hostel_type, parcel_id):
+            try:
+                roommates = await db.users.find({
+                    "room_number": room_number,
+                    "hostel_type": hostel_type,
+                    "role": UserRole.STUDENT
+                }).to_list(100)
+                tokens = [user.get("expoPushToken") for user in roommates if user.get("expoPushToken")]
+                if tokens:
+                    await send_expo_push_notification(
+                        tokens,
+                        "📦 Parcel Arrived!",
+                        f"A package has arrived at reception for your room ({room_number}). If you are expecting a delivery, please collect it.",
+                        {"parcelId": str(parcel_id)}
+                    )
+            except Exception as e:
+                logger.warning("Failed to send broadcast push: %s", str(e))
+        background_tasks.add_task(broadcast_to_room, request.room_number, current_user["hostel_type"], parcel_data["_id"])
     
     return {"message": "Parcel added successfully", "parcel": parcel_data}
 
@@ -892,6 +975,17 @@ async def assign_parcel(request: AssignParcelRequest, current_user: dict = Depen
         await send_parcel_notification(student["email"], student["name"], request.room_number)
     except Exception as e:
         logger.warning("Failed to send notification email: %s", str(e))
+
+    # Send push notification
+    if student.get("expoPushToken"):
+        async def safe_push():
+            await send_expo_push_notification(
+                [student["expoPushToken"]],
+                "📦 Parcel Claimed!",
+                "This parcel has been assigned to you. Please collect it.",
+                {"parcelId": str(parcel_object_id)}
+            )
+        asyncio.create_task(safe_push())
     
     return {"message": "Parcel assigned successfully"}
 

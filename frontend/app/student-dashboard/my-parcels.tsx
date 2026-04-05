@@ -1,16 +1,17 @@
-import React from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   View,
   Text,
   StyleSheet,
-  FlatList,
   RefreshControl,
+  Animated,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { useState, useEffect } from 'react';
 import api from '../../utils/api';
 import { useAuthStore } from '../../store/authStore';
+import { Colors, GlassCard } from '../../utils/theme';
+import AnimatedCard, { STACK_CARD_HEIGHT, STACK_CARD_SPACING, STACK_FOCUS_OFFSET } from '../../components/AnimatedCard';
 
 interface Parcel {
   _id: string;
@@ -28,7 +29,10 @@ export default function MyParcels() {
   const { user } = useAuthStore();
   const [parcels, setParcels] = useState<Parcel[]>([]);
   const [refreshing, setRefreshing] = useState(false);
-  const [loading, setLoading] = useState(true);
+  const [listHeight, setListHeight] = useState(0);
+  const [activeIndex, setActiveIndex] = useState(0);
+  const activeIndexRef = useRef(0);
+  const scrollY = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
     fetchParcels();
@@ -41,7 +45,6 @@ export default function MyParcels() {
     } catch (error) {
       console.error('Error fetching parcels:', error);
     } finally {
-      setLoading(false);
       setRefreshing(false);
     }
   };
@@ -51,34 +54,55 @@ export default function MyParcels() {
     fetchParcels();
   };
 
-  const renderParcelItem = ({ item }: { item: Parcel }) => (
-    <View style={styles.parcelCard}>
-      <View style={styles.parcelHeader}>
-        <View style={styles.parcelInfo}>
-          <Text style={styles.roomNumber}>Room {item.room_number}</Text>
-          <View style={styles.deliveredBadge}>
-            <Ionicons name="checkmark-circle" size={16} color="#16A34A" />
-            <Text style={styles.deliveredText}>Delivered</Text>
+  const getStackPadding = (height: number) => ({
+    top: Math.max(4, (height - STACK_CARD_HEIGHT) / 2 - STACK_FOCUS_OFFSET - 12),
+    bottom: Math.max(120, (height - STACK_CARD_HEIGHT) / 2 + STACK_FOCUS_OFFSET + 96),
+  });
+
+  const updateActiveIndex = (offsetY: number, viewportHeight?: number) => {
+    const height = viewportHeight ?? listHeight;
+    if (height <= 0 || parcels.length === 0) return;
+    const step = STACK_CARD_HEIGHT + STACK_CARD_SPACING;
+    const { top } = getStackPadding(height);
+    const centerY = offsetY + height / 2;
+    const rawIndex = (centerY - top - STACK_CARD_HEIGHT / 2) / step;
+    const nextIndex = Math.max(0, Math.min(parcels.length - 1, Math.round(rawIndex)));
+    if (nextIndex !== activeIndexRef.current) {
+      activeIndexRef.current = nextIndex;
+      setActiveIndex(nextIndex);
+    }
+  };
+
+  const renderParcelItem = ({ item, index }: { item: Parcel; index: number }) => (
+    <AnimatedCard index={index} activeIndex={activeIndex} scrollY={scrollY}>
+      <View style={styles.parcelCard}>
+        <View style={styles.parcelHeader}>
+          <View style={styles.parcelInfo}>
+            <Text style={styles.roomNumber}>Room {item.room_number}</Text>
+            <View style={styles.deliveredBadge}>
+              <Ionicons name="checkmark-circle" size={16} color={Colors.accentGreen} />
+              <Text style={styles.deliveredText}>Delivered</Text>
+            </View>
+          </View>
+        </View>
+
+        {item.description && (
+          <Text style={styles.description}>{item.description}</Text>
+        )}
+
+        <View style={styles.dateInfo}>
+          <View style={styles.dateRow}>
+            <Ionicons name="calendar-outline" size={14} color={Colors.textMuted} />
+            <Text style={styles.dateLabel}>Received on:</Text>
+            <Text style={styles.dateValue}>
+              {item.delivered_at
+                ? new Date(item.delivered_at).toLocaleDateString()
+                : 'N/A'}
+            </Text>
           </View>
         </View>
       </View>
-
-      {item.description && (
-        <Text style={styles.description}>{item.description}</Text>
-      )}
-
-      <View style={styles.dateInfo}>
-        <View style={styles.dateRow}>
-          <Ionicons name="calendar-outline" size={14} color="#9CA3AF" />
-          <Text style={styles.dateLabel}>Received on:</Text>
-          <Text style={styles.dateValue}>
-            {item.delivered_at
-              ? new Date(item.delivered_at).toLocaleDateString()
-              : 'N/A'}
-          </Text>
-        </View>
-      </View>
-    </View>
+    </AnimatedCard>
   );
 
   return (
@@ -90,17 +114,48 @@ export default function MyParcels() {
         </View>
       </View>
 
-      <FlatList
+      <Animated.FlatList
         data={parcels}
+        extraData={activeIndex}
         renderItem={renderParcelItem}
         keyExtractor={(item) => item._id}
-        contentContainerStyle={styles.listContainer}
+        contentContainerStyle={[
+          styles.listContainer,
+          listHeight > 0
+            ? {
+                paddingTop: getStackPadding(listHeight).top,
+                paddingBottom: getStackPadding(listHeight).bottom,
+              }
+            : null,
+        ]}
+        onLayout={(event) => setListHeight(event.nativeEvent.layout.height)}
+        onScroll={Animated.event(
+          [{ nativeEvent: { contentOffset: { y: scrollY } } }],
+          { useNativeDriver: true }
+        )}
+        scrollEventThrottle={16}
+        snapToInterval={STACK_CARD_HEIGHT + STACK_CARD_SPACING}
+        snapToAlignment="center"
+        decelerationRate={0.992}
+        showsVerticalScrollIndicator={false}
+        onScrollEndDrag={(event) => {
+          updateActiveIndex(
+            event.nativeEvent.contentOffset.y,
+            event.nativeEvent.layoutMeasurement?.height
+          );
+        }}
+        onMomentumScrollEnd={(event) => {
+          updateActiveIndex(
+            event.nativeEvent.contentOffset.y,
+            event.nativeEvent.layoutMeasurement?.height
+          );
+        }}
         refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />
+          <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={Colors.accent} />
         }
         ListEmptyComponent={
           <View style={styles.emptyContainer}>
-            <Ionicons name="cube-outline" size={64} color="#D1D5DB" />
+            <Ionicons name="cube-outline" size={64} color={Colors.textMuted} />
             <Text style={styles.emptyText}>No delivered parcels yet</Text>
             <Text style={styles.emptySubtext}>Your delivered parcels will appear here</Text>
           </View>
@@ -113,38 +168,33 @@ export default function MyParcels() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F9FAFB',
+    backgroundColor: Colors.bg,
   },
   header: {
     paddingHorizontal: 24,
     paddingVertical: 16,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: Colors.bg,
     borderBottomWidth: 1,
-    borderBottomColor: '#E5E7EB',
+    borderBottomColor: Colors.surfaceBorder,
   },
   headerTitle: {
     fontSize: 24,
     fontWeight: 'bold',
-    color: '#111827',
+    color: Colors.textPrimary,
   },
   headerSubtitle: {
     fontSize: 14,
-    color: '#6B7280',
+    color: Colors.textSecondary,
     marginTop: 4,
   },
   listContainer: {
     padding: 16,
   },
   parcelCard: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 12,
+    ...GlassCard,
+    height: STACK_CARD_HEIGHT,
     padding: 16,
-    marginBottom: 12,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 4,
-    elevation: 2,
+    overflow: 'hidden',
   },
   parcelHeader: {
     marginBottom: 12,
@@ -157,7 +207,7 @@ const styles = StyleSheet.create({
   roomNumber: {
     fontSize: 16,
     fontWeight: '600',
-    color: '#111827',
+    color: Colors.textPrimary,
   },
   deliveredBadge: {
     flexDirection: 'row',
@@ -166,21 +216,21 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
     paddingVertical: 4,
     borderRadius: 6,
-    backgroundColor: '#F0FDF4',
+    backgroundColor: Colors.deliveredBg,
   },
   deliveredText: {
     fontSize: 12,
     fontWeight: '600',
-    color: '#16A34A',
+    color: Colors.delivered,
   },
   description: {
     fontSize: 14,
-    color: '#6B7280',
+    color: Colors.textMuted,
     marginBottom: 12,
   },
   dateInfo: {
     borderTopWidth: 1,
-    borderTopColor: '#E5E7EB',
+    borderTopColor: Colors.surfaceBorder,
     paddingTop: 12,
   },
   dateRow: {
@@ -191,11 +241,11 @@ const styles = StyleSheet.create({
   dateLabel: {
     fontSize: 12,
     fontWeight: '600',
-    color: '#6B7280',
+    color: Colors.textSecondary,
   },
   dateValue: {
     fontSize: 12,
-    color: '#9CA3AF',
+    color: Colors.textMuted,
   },
   emptyContainer: {
     flex: 1,
@@ -206,12 +256,12 @@ const styles = StyleSheet.create({
   emptyText: {
     fontSize: 16,
     fontWeight: '600',
-    color: '#6B7280',
+    color: Colors.textSecondary,
     marginTop: 16,
   },
   emptySubtext: {
     fontSize: 14,
-    color: '#9CA3AF',
+    color: Colors.textMuted,
     marginTop: 8,
   },
 });

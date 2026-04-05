@@ -1,6 +1,7 @@
 import React from 'react';
-import { Modal, View, Text, StyleSheet, TouchableOpacity, TouchableWithoutFeedback, Pressable } from 'react-native';
+import { Modal, View, Text, StyleSheet, TouchableOpacity, Pressable } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { Colors, GlassCard } from '../utils/theme';
 
 type Props = {
   visible: boolean;
@@ -15,10 +16,10 @@ export default function ErrorPopup({ visible, message, onClose }: Props) {
         <Pressable style={styles.overlayPress} onPress={onClose} />
         <View style={styles.card}>
           <TouchableOpacity onPress={onClose} style={styles.closeButton} activeOpacity={0.7}>
-            <Ionicons name="close" size={20} color="#DC2626" />
+            <Ionicons name="close" size={20} color={Colors.accentRed} />
           </TouchableOpacity>
           <View style={styles.iconWrap}>
-            <Ionicons name="warning-outline" size={32} color="#DC2626" />
+            <Ionicons name="warning-outline" size={32} color={Colors.accentRed} />
           </View>
           <Text style={styles.title}>Something went wrong</Text>
           <Text style={styles.message}>{message || 'Wrong OTP or password. Try again.'}</Text>
@@ -34,7 +35,7 @@ export default function ErrorPopup({ visible, message, onClose }: Props) {
 const styles = StyleSheet.create({
   overlay: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.35)',
+    backgroundColor: Colors.overlay,
     alignItems: 'center',
     justifyContent: 'center',
     padding: 24,
@@ -50,8 +51,8 @@ const styles = StyleSheet.create({
   card: {
     width: '100%',
     maxWidth: 420,
-    backgroundColor: '#FFFFFF',
-    borderRadius: 16,
+    ...GlassCard,
+    backgroundColor: 'rgba(30,30,50,0.95)',
     padding: 20,
     alignItems: 'center',
     gap: 12,
@@ -67,31 +68,31 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#FEE2E2',
+    backgroundColor: Colors.accentRedDim,
   },
   iconWrap: {
     width: 56,
     height: 56,
     borderRadius: 28,
-    backgroundColor: '#FEE2E2',
+    backgroundColor: Colors.accentRedDim,
     alignItems: 'center',
     justifyContent: 'center',
   },
   title: {
     fontSize: 18,
     fontWeight: '700',
-    color: '#111827',
+    color: Colors.textPrimary,
     marginTop: 4,
     textAlign: 'center',
   },
   message: {
     fontSize: 14,
-    color: '#374151',
+    color: Colors.textSecondary,
     textAlign: 'center',
   },
   button: {
     marginTop: 8,
-    backgroundColor: '#2563EB',
+    backgroundColor: Colors.accent,
     borderRadius: 10,
     height: 44,
     paddingHorizontal: 20,
