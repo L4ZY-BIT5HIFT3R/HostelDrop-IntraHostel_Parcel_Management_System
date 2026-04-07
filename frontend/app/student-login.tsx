@@ -10,6 +10,7 @@ import {
   Alert,
   ActivityIndicator,
   ScrollView,
+  Modal,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
@@ -38,6 +39,15 @@ export default function StudentLogin() {
   const [errorVisible, setErrorVisible] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
   const isRegisterMode = authMode === 'REGISTER';
+
+  // Forgot Password state
+  const [forgotModalVisible, setForgotModalVisible] = useState(false);
+  const [fpRollNumber, setFpRollNumber] = useState('');
+  const [fpOtp, setFpOtp] = useState('');
+  const [fpNewPassword, setFpNewPassword] = useState('');
+  const [fpOtpSent, setFpOtpSent] = useState(false);
+  const [fpLoading, setFpLoading] = useState(false);
+  const [fpMaskedEmail, setFpMaskedEmail] = useState('');
 
   useEffect(() => {
     loadHostelType();
@@ -130,6 +140,69 @@ export default function StudentLogin() {
       setErrorVisible(true);
     } finally {
       setLoading(false);
+    }
+  };
+
+  // ---- Forgot Password handlers ----
+  const openForgotPassword = () => {
+    setFpRollNumber(rollNumber);
+    setFpOtp('');
+    setFpNewPassword('');
+    setFpOtpSent(false);
+    setFpMaskedEmail('');
+    setForgotModalVisible(true);
+  };
+
+  const handleForgotSendOtp = async () => {
+    if (!fpRollNumber.trim()) {
+      setErrorMessage('Please enter your roll number');
+      setErrorVisible(true);
+      return;
+    }
+    setFpLoading(true);
+    try {
+      const response = await api.post('/auth/student/forgot-password/request-otp', {
+        roll_number: fpRollNumber.trim(),
+        hostel_type: hostelType,
+      });
+      setFpOtpSent(true);
+      setFpMaskedEmail(response.data.email || '');
+      Alert.alert('OTP Sent', `A password reset OTP has been sent to ${response.data.email}`);
+    } catch (error: any) {
+      setErrorMessage(error.response?.data?.detail || 'Failed to send OTP. Try again.');
+      setErrorVisible(true);
+    } finally {
+      setFpLoading(false);
+    }
+  };
+
+  const handleForgotResetPassword = async () => {
+    if (!fpOtp.trim()) {
+      setErrorMessage('Please enter the OTP');
+      setErrorVisible(true);
+      return;
+    }
+    if (!fpNewPassword.trim() || fpNewPassword.length < 4) {
+      setErrorMessage('New password must be at least 4 characters');
+      setErrorVisible(true);
+      return;
+    }
+    setFpLoading(true);
+    try {
+      await api.post('/auth/student/forgot-password/verify-otp', {
+        roll_number: fpRollNumber.trim(),
+        hostel_type: hostelType,
+        otp_code: fpOtp.trim(),
+        new_password: fpNewPassword,
+      });
+      Alert.alert('Password Reset', 'Your password has been reset successfully. You can now login with your new password.');
+      setForgotModalVisible(false);
+      setPassword('');
+    } catch (error: any) {
+      setErrorMessage(error.response?.data?.detail || 'Failed to reset password. Try again.');
+      setErrorVisible(true);
+    } finally {
+      setFpLoading(false);
     }
   };
 
@@ -294,6 +367,13 @@ export default function StudentLogin() {
               </View>
             </View>
 
+            {/* Forgot Password link - only on login mode */}
+            {!isRegisterMode && !otpSent && (
+              <TouchableOpacity onPress={openForgotPassword} style={styles.forgotPasswordLink}>
+                <Text style={styles.forgotPasswordText}>Forgot Password?</Text>
+              </TouchableOpacity>
+            )}
+
             {otpSent && isRegisterMode && (
               <View style={styles.inputContainer}>
                 <Text style={styles.label}>Enter OTP</Text>
@@ -357,7 +437,136 @@ export default function StudentLogin() {
           </ScrollView>
         </View>
       </KeyboardAvoidingView>
-      
+
+      {/* ========= Forgot Password Modal ========= */}
+      <Modal
+        visible={forgotModalVisible}
+        animationType="slide"
+        transparent={true}
+        onRequestClose={() => setForgotModalVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <KeyboardAvoidingView
+            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+            style={styles.modalKeyboard}
+          >
+            <View style={styles.modalContent}>
+              <View style={styles.modalHeader}>
+                <Text style={styles.modalTitle}>Reset Password</Text>
+                <TouchableOpacity onPress={() => setForgotModalVisible(false)}>
+                  <Ionicons name="close" size={24} color={Colors.textPrimary} />
+                </TouchableOpacity>
+              </View>
+
+              <ScrollView
+                showsVerticalScrollIndicator={false}
+                keyboardShouldPersistTaps="handled"
+                contentContainerStyle={{ gap: 20 }}
+              >
+                <Text style={styles.modalDescription}>
+                  Enter your roll number to receive a password reset OTP on your registered email.
+                </Text>
+
+                <View style={styles.inputContainer}>
+                  <Text style={styles.label}>Roll Number</Text>
+                  <View style={styles.inputWrapper}>
+                    <Ionicons name="card-outline" size={20} color={Colors.textMuted} style={styles.inputIcon} />
+                    <TextInput
+                      style={styles.input}
+                      placeholder="Enter your roll number"
+                      value={fpRollNumber}
+                      onChangeText={setFpRollNumber}
+                      autoCapitalize="characters"
+                      editable={!fpOtpSent}
+                      placeholderTextColor={Colors.textMuted}
+                    />
+                  </View>
+                </View>
+
+                {fpOtpSent && (
+                  <>
+                    {fpMaskedEmail ? (
+                      <Text style={styles.fpEmailHint}>OTP sent to {fpMaskedEmail}</Text>
+                    ) : null}
+
+                    <View style={styles.inputContainer}>
+                      <Text style={styles.label}>Enter OTP</Text>
+                      <View style={styles.inputWrapper}>
+                        <Ionicons name="key-outline" size={20} color={Colors.textMuted} style={styles.inputIcon} />
+                        <TextInput
+                          style={styles.input}
+                          placeholder="6-digit OTP"
+                          value={fpOtp}
+                          onChangeText={setFpOtp}
+                          keyboardType="number-pad"
+                          maxLength={6}
+                          placeholderTextColor={Colors.textMuted}
+                        />
+                      </View>
+                    </View>
+
+                    <View style={styles.inputContainer}>
+                      <Text style={styles.label}>New Password</Text>
+                      <View style={styles.inputWrapper}>
+                        <Ionicons name="lock-closed-outline" size={20} color={Colors.textMuted} style={styles.inputIcon} />
+                        <TextInput
+                          style={styles.input}
+                          placeholder="Enter new password"
+                          value={fpNewPassword}
+                          onChangeText={setFpNewPassword}
+                          secureTextEntry
+                          placeholderTextColor={Colors.textMuted}
+                        />
+                      </View>
+                    </View>
+                  </>
+                )}
+
+                {!fpOtpSent ? (
+                  <TouchableOpacity
+                    style={[styles.button, fpLoading && styles.buttonDisabled]}
+                    onPress={handleForgotSendOtp}
+                    disabled={fpLoading}
+                    activeOpacity={0.8}
+                  >
+                    {fpLoading ? (
+                      <ActivityIndicator color="#FFFFFF" />
+                    ) : (
+                      <Text style={styles.buttonText}>Send Reset OTP</Text>
+                    )}
+                  </TouchableOpacity>
+                ) : (
+                  <View style={styles.otpActions}>
+                    <TouchableOpacity
+                      style={[styles.button, fpLoading && styles.buttonDisabled]}
+                      onPress={handleForgotResetPassword}
+                      disabled={fpLoading}
+                      activeOpacity={0.8}
+                    >
+                      {fpLoading ? (
+                        <ActivityIndicator color="#FFFFFF" />
+                      ) : (
+                        <Text style={styles.buttonText}>Reset Password</Text>
+                      )}
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={styles.resendButton}
+                      onPress={() => {
+                        setFpOtpSent(false);
+                        setFpOtp('');
+                        setFpNewPassword('');
+                      }}
+                    >
+                      <Text style={styles.resendButtonText}>Resend OTP</Text>
+                    </TouchableOpacity>
+                  </View>
+                )}
+              </ScrollView>
+            </View>
+          </KeyboardAvoidingView>
+        </View>
+      </Modal>
+
       <ErrorPopup
         visible={errorVisible}
         message={errorMessage}
@@ -497,5 +706,56 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '600',
     color: Colors.accentGreen,
+  },
+  forgotPasswordLink: {
+    alignSelf: 'flex-end',
+    marginTop: -12,
+  },
+  forgotPasswordText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: Colors.accent,
+  },
+  // Modal styles
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.7)',
+    justifyContent: 'flex-end',
+  },
+  modalKeyboard: {
+    justifyContent: 'flex-end',
+  },
+  modalContent: {
+    backgroundColor: Colors.bg,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    padding: 24,
+    maxHeight: '85%',
+    borderTopWidth: 1,
+    borderLeftWidth: 1,
+    borderRightWidth: 1,
+    borderColor: Colors.surfaceBorder,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  modalTitle: {
+    fontSize: 22,
+    fontWeight: 'bold',
+    color: Colors.textPrimary,
+  },
+  modalDescription: {
+    fontSize: 14,
+    color: Colors.textSecondary,
+    lineHeight: 20,
+  },
+  fpEmailHint: {
+    fontSize: 13,
+    color: Colors.accentGreen,
+    fontWeight: '500',
+    textAlign: 'center',
   },
 });

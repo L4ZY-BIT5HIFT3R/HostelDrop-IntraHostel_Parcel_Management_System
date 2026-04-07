@@ -1,5 +1,5 @@
 import asyncio
-from fastapi import FastAPI, APIRouter, HTTPException, Depends, status, BackgroundTasks
+from fastapi import FastAPI, APIRouter, HTTPException, Depends, status, BackgroundTasks, Request
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
@@ -26,6 +26,9 @@ from email.mime.multipart import MIMEMultipart
 # from googleapiclient.discovery import build
 import base64
 import httpx
+from collections import defaultdict
+from collections import deque
+import threading
 
 # Configure logging early so startup config warnings are visible.
 logging.basicConfig(
@@ -138,6 +141,7 @@ class OTPPurpose:
     STUDENT_LOGIN = "STUDENT_LOGIN"
     STUDENT_REGISTRATION = "STUDENT_REGISTRATION"
     PARCEL_DELIVERY = "PARCEL_DELIVERY"
+    PASSWORD_RESET = "PASSWORD_RESET"
 
 # Request Models
 class GuardLoginRequest(BaseModel):
@@ -209,6 +213,20 @@ class VerifyParcelOTPRequest(BaseModel):
 
 class UpdateExpoTokenRequest(BaseModel):
     expo_push_token: str
+
+class ForgotPasswordRequest(BaseModel):
+    roll_number: str
+    hostel_type: str
+
+class ResetPasswordVerify(BaseModel):
+    roll_number: str
+    hostel_type: str
+    otp_code: str
+    new_password: str
+
+class ChangePasswordRequest(BaseModel):
+    current_password: str
+    new_password: str
 
 # ============= QR Code Pickup Models =============
 
@@ -324,6 +342,72 @@ def parse_object_id(raw_id: str, field_name: str) -> ObjectId:
 def generate_otp() -> str:
     return ''.join(random.choices(string.digits, k=6))
 
+class InMemoryRateLimiter:
+    """Simple in-memory sliding-window rate limiter with periodic cleanup."""
+
+    def __init__(self, max_requests: int, window_seconds: int, cleanup_interval_seconds: int = 60):
+        self.max_requests = max_requests
+        self.window_seconds = window_seconds
+        self.cleanup_interval_seconds = cleanup_interval_seconds
+        self._requests: Dict[str, deque] = defaultdict(deque)
+        self._last_cleanup = datetime.utcnow()
+        self._lock = threading.Lock()
+
+    def _cleanup_if_due(self, now: datetime) -> None:
+        if (now - self._last_cleanup).total_seconds() < self.cleanup_interval_seconds:
+            return
+
+        cutoff = now - timedelta(seconds=self.window_seconds)
+        keys_to_remove: List[str] = []
+
+        for key, timestamps in self._requests.items():
+            while timestamps and timestamps[0] <= cutoff:
+                timestamps.popleft()
+            if not timestamps:
+                keys_to_remove.append(key)
+
+        for key in keys_to_remove:
+            del self._requests[key]
+
+        self._last_cleanup = now
+
+    def allow(self, key: str) -> bool:
+        now = datetime.utcnow()
+        cutoff = now - timedelta(seconds=self.window_seconds)
+
+        with self._lock:
+            self._cleanup_if_due(now)
+            timestamps = self._requests[key]
+
+            while timestamps and timestamps[0] <= cutoff:
+                timestamps.popleft()
+
+            if len(timestamps) >= self.max_requests:
+                return False
+
+            timestamps.append(now)
+            return True
+
+auth_rate_limiter = InMemoryRateLimiter(
+    max_requests=int(os.environ.get("AUTH_RATE_LIMIT_MAX_REQUESTS", "5")),
+    window_seconds=int(os.environ.get("AUTH_RATE_LIMIT_WINDOW_SECONDS", "60")),
+    cleanup_interval_seconds=int(os.environ.get("AUTH_RATE_LIMIT_CLEANUP_SECONDS", "60")),
+)
+
+async def enforce_auth_rate_limit(request: Request):
+    forwarded_for = request.headers.get("x-forwarded-for", "")
+    if forwarded_for:
+        client_ip = forwarded_for.split(",")[0].strip()
+    else:
+        client_ip = request.client.host if request.client else "unknown"
+
+    key = f"{request.url.path}:{client_ip}"
+    if not auth_rate_limiter.allow(key):
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Too many requests. Please try again later.",
+        )
+
 def build_status_event(
     event: str,
     actor: Optional[dict] = None,
@@ -423,6 +507,44 @@ def serialize_parcel(parcel: Dict[str, Any]) -> Dict[str, Any]:
         parcel["_id"] = str(parcel["_id"])
     parcel["status_history"] = ensure_status_history(parcel)
     return parcel
+
+async def auto_link_parcels_for_student(student: Dict[str, Any]) -> int:
+    """
+    Backfill parcel ownership for students who register after parcels were logged with roll number.
+    Maps parcels by (hostel_type + roll_number) when student_id is missing.
+    """
+    roll_number = (student.get("roll_number") or "").strip()
+    hostel_type = student.get("hostel_type")
+    student_id_raw = student.get("_id")
+    student_email = (student.get("email") or "").strip()
+
+    if not roll_number or not hostel_type or not student_id_raw:
+        return 0
+
+    student_id = str(student_id_raw)
+    query = {
+        "hostel_type": hostel_type,
+        "roll_number": roll_number,
+        "$or": [
+            {"student_id": {"$exists": False}},
+            {"student_id": None},
+            {"student_id": ""},
+        ],
+    }
+
+    set_fields: Dict[str, Any] = {"student_id": student_id}
+    if student_email:
+        set_fields["student_email"] = student_email
+
+    result = await db.parcels.update_many(query, {"$set": set_fields})
+    if result.modified_count:
+        logger.info(
+            "Auto-linked %s parcel(s) for roll %s in %s hostel",
+            result.modified_count,
+            roll_number,
+            hostel_type,
+        )
+    return result.modified_count
 
 def mask_email(email: str) -> str:
     if "@" not in email:
@@ -662,7 +784,7 @@ async def root():
 # ============= Authentication Routes =============
 
 @api_router.post("/auth/guard/login", response_model=TokenResponse)
-async def guard_login(request: GuardLoginRequest):
+async def guard_login(request: GuardLoginRequest, _: None = Depends(enforce_auth_rate_limit)):
     """Guard login with username and password"""
     validate_hostel_type(request.hostel_type)
     user = await db.users.find_one({
@@ -693,7 +815,7 @@ async def guard_login(request: GuardLoginRequest):
     }
 
 @api_router.post("/auth/admin/login", response_model=TokenResponse)
-async def admin_login(request: AdminLoginRequest):
+async def admin_login(request: AdminLoginRequest, _: None = Depends(enforce_auth_rate_limit)):
     """Admin login with email and password"""
     user = await db.users.find_one({
         "email": request.email,
@@ -719,7 +841,7 @@ async def admin_login(request: AdminLoginRequest):
     }
 
 @api_router.post("/auth/student/login", response_model=TokenResponse)
-async def student_login(request: StudentLoginRequest):
+async def student_login(request: StudentLoginRequest, _: None = Depends(enforce_auth_rate_limit)):
     """Student login with roll number and password"""
     validate_hostel_type(request.hostel_type)
     
@@ -731,7 +853,12 @@ async def student_login(request: StudentLoginRequest):
     
     if not user or not user.get("password") or not verify_password(request.password, user["password"]):
         raise HTTPException(status_code=401, detail="Invalid credentials")
-    
+
+    try:
+        await auto_link_parcels_for_student(user)
+    except Exception as exc:
+        logger.warning("Auto-link on student login failed: %s", exc)
+
     token = create_access_token({
         "user_id": str(user["_id"]),
         "role": user["role"],
@@ -825,6 +952,11 @@ async def student_register_verify_otp(request: StudentRegisterVerify):
     result = await db.users.insert_one(student_doc)
     student_doc["_id"] = str(result.inserted_id)
 
+    try:
+        await auto_link_parcels_for_student(student_doc)
+    except Exception as exc:
+        logger.warning("Auto-link after student registration failed: %s", exc)
+
     token = create_access_token({
         "user_id": student_doc["_id"],
         "role": student_doc["role"],
@@ -848,6 +980,120 @@ async def update_expo_token(request: UpdateExpoTokenRequest, current_user: dict 
         {"$set": {"expoPushToken": request.expo_push_token}}
     )
     return {"message": "Push token updated successfully"}
+
+# ============= Student Password Reset Routes =============
+
+@api_router.post("/auth/student/forgot-password/request-otp")
+async def student_forgot_password_request_otp(request: ForgotPasswordRequest, _: None = Depends(enforce_auth_rate_limit)):
+    """Send OTP to student email for password reset"""
+    validate_hostel_type(request.hostel_type)
+    student = await db.users.find_one({
+        "roll_number": request.roll_number,
+        "role": UserRole.STUDENT,
+        "hostel_type": request.hostel_type
+    })
+    if not student or not student.get("email"):
+        raise HTTPException(status_code=404, detail="No student found with this roll number in the selected hostel")
+
+    # Invalidate previous unused password-reset OTPs
+    await db.otps.update_many({
+        "email": student["email"],
+        "purpose": OTPPurpose.PASSWORD_RESET,
+        "is_used": False
+    }, {"$set": {"is_used": True}})
+
+    otp_code = generate_otp()
+    expiry_time = datetime.utcnow() + timedelta(minutes=10)
+    otp_doc = {
+        "email": student["email"],
+        "purpose": OTPPurpose.PASSWORD_RESET,
+        "otp_code": otp_code,
+        "expiry_time": expiry_time,
+        "is_used": False,
+        "created_at": datetime.utcnow()
+    }
+    await db.otps.insert_one(otp_doc)
+    await send_email_otp(student["email"], otp_code)
+    return {"message": "Password reset OTP sent to your registered email", "email": mask_email(student["email"])}
+
+@api_router.post("/auth/student/forgot-password/verify-otp")
+async def student_forgot_password_verify_otp(request: ResetPasswordVerify, _: None = Depends(enforce_auth_rate_limit)):
+    """Verify OTP and reset student password"""
+    validate_hostel_type(request.hostel_type)
+    student = await db.users.find_one({
+        "roll_number": request.roll_number,
+        "role": UserRole.STUDENT,
+        "hostel_type": request.hostel_type
+    })
+    if not student or not student.get("email"):
+        raise HTTPException(status_code=404, detail="Student not found")
+
+    otp = await db.otps.find_one({
+        "email": student["email"],
+        "purpose": OTPPurpose.PASSWORD_RESET,
+        "otp_code": request.otp_code,
+        "is_used": False
+    })
+    if not otp:
+        raise HTTPException(status_code=401, detail="Invalid OTP")
+    if otp["expiry_time"] < datetime.utcnow():
+        raise HTTPException(status_code=401, detail="OTP has expired")
+
+    # Mark OTP as used
+    await db.otps.update_one(
+        {"_id": otp["_id"]},
+        {"$set": {"is_used": True}}
+    )
+
+    # Update password
+    new_hashed = hash_password(request.new_password)
+    await db.users.update_one(
+        {"_id": student["_id"]},
+        {"$set": {"password": new_hashed}}
+    )
+
+    return {"message": "Password reset successfully. You can now login with your new password."}
+
+@api_router.put("/auth/student/change-password")
+async def student_change_password(
+    request: ChangePasswordRequest,
+    current_user: dict = Depends(get_current_user),
+    _: None = Depends(enforce_auth_rate_limit),
+):
+    """Authenticated student changes their password using current password"""
+    if current_user["role"] != UserRole.STUDENT:
+        raise HTTPException(status_code=403, detail="Only students can use this endpoint")
+
+    student = await db.users.find_one({"_id": ObjectId(current_user["_id"])})
+    if not student:
+        raise HTTPException(status_code=404, detail="Student not found")
+
+    if not student.get("password") or not verify_password(request.current_password, student["password"]):
+        raise HTTPException(status_code=401, detail="Current password is incorrect")
+
+    if len(request.new_password) < 4:
+        raise HTTPException(status_code=400, detail="New password must be at least 4 characters")
+
+    new_hashed = hash_password(request.new_password)
+    await db.users.update_one(
+        {"_id": student["_id"]},
+        {"$set": {"password": new_hashed}}
+    )
+    return {"message": "Password changed successfully"}
+
+@api_router.get("/auth/student/profile")
+async def student_profile(current_user: dict = Depends(get_current_user)):
+    """Get the logged-in student's profile"""
+    if current_user["role"] != UserRole.STUDENT:
+        raise HTTPException(status_code=403, detail="Only students can access this endpoint")
+
+    student = await db.users.find_one({"_id": ObjectId(current_user["_id"])})
+    if not student:
+        raise HTTPException(status_code=404, detail="Student not found")
+
+    student["_id"] = str(student["_id"])
+    student.pop("password", None)
+    return {"student": student}
 
 # ============= Admin Routes =============
 
@@ -898,6 +1144,13 @@ async def add_user(request: AddUserRequest, current_user: dict = Depends(get_cur
     
     result = await db.users.insert_one(user_data)
     user_data["_id"] = str(result.inserted_id)
+
+    if request.role == UserRole.STUDENT:
+        try:
+            await auto_link_parcels_for_student(user_data)
+        except Exception as exc:
+            logger.warning("Auto-link after admin student creation failed: %s", exc)
+
     user_data.pop("password", None)
     
     return {"message": "User added successfully", "user": user_data}

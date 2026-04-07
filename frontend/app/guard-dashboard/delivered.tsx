@@ -45,7 +45,7 @@ interface StudentDetails {
   contact_number?: string;
 }
 
-const DELIVERED_STACK_CARD_HEIGHT = 240;
+const DELIVERED_STACK_CARD_HEIGHT = 270;
 
 export default function DeliveredParcels() {
   const [parcels, setParcels] = useState<Parcel[]>([]);
