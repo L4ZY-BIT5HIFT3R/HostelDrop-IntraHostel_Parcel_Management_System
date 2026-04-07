@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -50,11 +50,7 @@ export default function StudentDashboardIndex() {
   const [showDelegateInput, setShowDelegateInput] = useState(false);
   const [delegatePin, setDelegatePin] = useState('');
 
-  useEffect(() => {
-    fetchParcels();
-  }, []);
-
-  const fetchParcels = async () => {
+  const fetchParcels = useCallback(async () => {
     try {
       const response = await api.get(`/parcel/hostel/${user?.hostel_type}`);
       const pendingParcels = response.data.parcels.filter(
@@ -67,7 +63,11 @@ export default function StudentDashboardIndex() {
     } finally {
       setRefreshing(false);
     }
-  };
+  }, [user?.hostel_type]);
+
+  useEffect(() => {
+    fetchParcels();
+  }, []);
 
   const handleRefresh = () => {
     setRefreshing(true);

@@ -16,7 +16,8 @@ import { Ionicons } from '@expo/vector-icons';
 import { useIsFocused } from '@react-navigation/native';
 import api from '../../utils/api';
 import { Colors, GlassCard, GlassInput } from '../../utils/theme';
-import AnimatedCard, { STACK_CARD_HEIGHT, STACK_CARD_SPACING, STACK_FOCUS_OFFSET } from '../../components/AnimatedCard';
+import AnimatedCard, { STACK_CARD_SPACING, STACK_FOCUS_OFFSET } from '../../components/AnimatedCard';
+import ParcelTimeline from '../../components/ParcelTimeline';
 
 interface Parcel {
   _id: string;
@@ -28,7 +29,10 @@ interface Parcel {
   roll_number?: string;
   description?: string;
   created_at: string;
+  assigned_at?: string;
+  otp_sent_at?: string;
   delivered_at?: string;
+  status_history?: { event?: string; timestamp?: string }[];
 }
 
 interface StudentDetails {
@@ -40,6 +44,8 @@ interface StudentDetails {
   hostel_type: string;
   contact_number?: string;
 }
+
+const DELIVERED_STACK_CARD_HEIGHT = 240;
 
 export default function DeliveredParcels() {
   const [parcels, setParcels] = useState<Parcel[]>([]);
@@ -85,17 +91,17 @@ export default function DeliveredParcels() {
   };
 
   const getStackPadding = (height: number) => ({
-    top: Math.max(4, (height - STACK_CARD_HEIGHT) / 2 - STACK_FOCUS_OFFSET - 12),
-    bottom: Math.max(120, (height - STACK_CARD_HEIGHT) / 2 + STACK_FOCUS_OFFSET + 96),
+    top: Math.max(4, (height - DELIVERED_STACK_CARD_HEIGHT) / 2 - STACK_FOCUS_OFFSET - 12),
+    bottom: Math.max(120, (height - DELIVERED_STACK_CARD_HEIGHT) / 2 + STACK_FOCUS_OFFSET + 96),
   });
 
   const updateActiveIndex = (offsetY: number, viewportHeight?: number) => {
     const height = viewportHeight ?? listHeight;
     if (height <= 0 || filteredParcels.length === 0) return;
-    const step = STACK_CARD_HEIGHT + STACK_CARD_SPACING;
+    const step = DELIVERED_STACK_CARD_HEIGHT + STACK_CARD_SPACING;
     const { top } = getStackPadding(height);
     const centerY = offsetY + height / 2;
-    const rawIndex = (centerY - top - STACK_CARD_HEIGHT / 2) / step;
+    const rawIndex = (centerY - top - DELIVERED_STACK_CARD_HEIGHT / 2) / step;
     const nextIndex = Math.max(0, Math.min(filteredParcels.length - 1, Math.round(rawIndex)));
     if (nextIndex !== activeIndexRef.current) {
       activeIndexRef.current = nextIndex;
@@ -163,27 +169,18 @@ export default function DeliveredParcels() {
         )}
 
         {item.description && (
-          <Text style={styles.description}>{item.description}</Text>
+          <Text style={styles.description} numberOfLines={1}>{item.description}</Text>
         )}
 
-        <View style={styles.dateInfo}>
-          <View style={styles.dateRow}>
-            <Text style={styles.dateLabel}>Logged:</Text>
-            <Text style={styles.dateValue}>
-              {new Date(item.created_at).toLocaleDateString()} at{' '}
-              {new Date(item.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-            </Text>
-          </View>
-          {item.delivered_at && (
-            <View style={styles.dateRow}>
-              <Text style={styles.dateLabel}>Delivered:</Text>
-              <Text style={styles.dateValue}>
-                {new Date(item.delivered_at).toLocaleDateString()} at{' '}
-                {new Date(item.delivered_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-              </Text>
-            </View>
-          )}
-        </View>
+        <ParcelTimeline
+          history={item.status_history}
+          currentStatus={item.status}
+          createdAt={item.created_at}
+          assignedAt={item.assigned_at}
+          otpSentAt={item.otp_sent_at}
+          deliveredAt={item.delivered_at}
+          compact
+        />
 
         {item.student_id && (
           <Text style={styles.tapHint}>Tap to view student details</Text>
@@ -243,7 +240,7 @@ export default function DeliveredParcels() {
             { useNativeDriver: true }
           )}
           scrollEventThrottle={16}
-          snapToInterval={STACK_CARD_HEIGHT + STACK_CARD_SPACING}
+          snapToInterval={DELIVERED_STACK_CARD_HEIGHT + STACK_CARD_SPACING}
           snapToAlignment="center"
           decelerationRate={0.992}
           showsVerticalScrollIndicator={false}
@@ -415,7 +412,7 @@ const styles = StyleSheet.create({
   },
   parcelCard: {
     ...GlassCard,
-    height: STACK_CARD_HEIGHT,
+    height: DELIVERED_STACK_CARD_HEIGHT,
     padding: 16,
     overflow: 'hidden',
   },
@@ -467,27 +464,6 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: Colors.textMuted,
     marginBottom: 12,
-  },
-  dateInfo: {
-    borderTopWidth: 1,
-    borderTopColor: Colors.surfaceBorder,
-    paddingTop: 12,
-    gap: 6,
-    marginBottom: 8,
-  },
-  dateRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  dateLabel: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: Colors.textSecondary,
-  },
-  dateValue: {
-    fontSize: 12,
-    color: Colors.textMuted,
   },
   tapHint: {
     fontSize: 12,
