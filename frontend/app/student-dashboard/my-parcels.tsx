@@ -29,7 +29,7 @@ interface Parcel {
   status_history?: { event?: string; timestamp?: string }[];
 }
 
-const DELIVERED_STACK_CARD_HEIGHT = 200;
+const DELIVERED_STACK_CARD_HEIGHT = 240;
 
 export default function MyParcels() {
   const { user } = useAuthStore();

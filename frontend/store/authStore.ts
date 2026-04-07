@@ -10,6 +10,7 @@ interface User {
   roll_number?: string;
   email?: string;
   room_number?: string;
+  contact_number?: string;
 }
 
 interface AuthState {
