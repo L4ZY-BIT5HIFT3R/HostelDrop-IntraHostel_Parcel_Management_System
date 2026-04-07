@@ -1,0 +1,227 @@
+import React, { useMemo } from 'react';
+import { StyleSheet, Text, View } from 'react-native';
+import { Colors } from '../utils/theme';
+
+type TimelineEvent = {
+  event?: string;
+  timestamp?: string;
+};
+
+type TimelineProps = {
+  history?: TimelineEvent[];
+  currentStatus?: string;
+  createdAt?: string;
+  assignedAt?: string;
+  otpSentAt?: string;
+  deliveredAt?: string;
+  compact?: boolean;
+};
+
+const TIMELINE_STEPS = [
+  { key: 'LOGGED', label: 'Logged' },
+  { key: 'ASSIGNED', label: 'Assigned' },
+  { key: 'OTP_SENT', label: 'OTP Sent' },
+  { key: 'DELIVERED', label: 'Delivered' },
+];
+
+const STEP_ORDER: Record<string, number> = {
+  LOGGED: 0,
+  ASSIGNED: 1,
+  OTP_SENT: 2,
+  DELIVERED: 3,
+};
+
+const parseDate = (value?: string) => {
+  if (!value) return null;
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return null;
+  return parsed;
+};
+
+const formatTimestamp = (value?: string) => {
+  const parsed = parseDate(value);
+  if (!parsed) return 'Waiting';
+  return parsed.toLocaleString([], {
+    day: '2-digit',
+    month: 'short',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+};
+
+export default function ParcelTimeline({
+  history,
+  currentStatus,
+  createdAt,
+  assignedAt,
+  otpSentAt,
+  deliveredAt,
+  compact = false,
+}: TimelineProps) {
+  const stepTimeMap = useMemo(() => {
+    const map: Record<string, string | undefined> = {};
+
+    if (Array.isArray(history) && history.length) {
+      const sorted = [...history].sort((a, b) => {
+        const aTime = parseDate(a.timestamp)?.getTime() ?? 0;
+        const bTime = parseDate(b.timestamp)?.getTime() ?? 0;
+        if (aTime === bTime) {
+          return (STEP_ORDER[a.event || ''] ?? 99) - (STEP_ORDER[b.event || ''] ?? 99);
+        }
+        return aTime - bTime;
+      });
+
+      for (const item of sorted) {
+        if (!item.event || !item.timestamp) continue;
+        if (!map[item.event]) {
+          map[item.event] = item.timestamp;
+        }
+      }
+    }
+
+    if (!map.LOGGED && createdAt) map.LOGGED = createdAt;
+
+    if (!map.ASSIGNED) {
+      if (assignedAt) {
+        map.ASSIGNED = assignedAt;
+      } else if (currentStatus === 'PENDING' || currentStatus === 'DELIVERED') {
+        map.ASSIGNED = createdAt;
+      }
+    }
+
+    if (!map.OTP_SENT && otpSentAt) map.OTP_SENT = otpSentAt;
+    if (!map.DELIVERED && deliveredAt) map.DELIVERED = deliveredAt;
+
+    return map;
+  }, [history, currentStatus, createdAt, assignedAt, otpSentAt, deliveredAt]);
+
+  const completedIndexes = TIMELINE_STEPS
+    .map((step, index) => (stepTimeMap[step.key] ? index : -1))
+    .filter((index) => index >= 0);
+  const latestCompletedIndex = completedIndexes.length ? Math.max(...completedIndexes) : -1;
+  const currentIndex =
+    latestCompletedIndex < TIMELINE_STEPS.length - 1 ? latestCompletedIndex + 1 : latestCompletedIndex;
+
+  return (
+    <View style={[styles.container, compact && styles.containerCompact]}>
+      {TIMELINE_STEPS.map((step, index) => {
+        const isCompleted = Boolean(stepTimeMap[step.key]);
+        const isCurrent = !isCompleted && index === currentIndex;
+        const isLast = index === TIMELINE_STEPS.length - 1;
+
+        return (
+          <View key={step.key} style={[styles.row, compact && styles.rowCompact]}>
+            <View style={styles.indicatorColumn}>
+              {!isLast && (
+                <View
+                  style={[
+                    styles.connector,
+                    isCompleted ? styles.connectorDone : styles.connectorPending,
+                  ]}
+                />
+              )}
+              <View
+                style={[
+                  styles.dot,
+                  isCompleted ? styles.dotDone : styles.dotPending,
+                  isCurrent ? styles.dotCurrent : null,
+                ]}
+              />
+            </View>
+
+            <View style={styles.textBlock}>
+              <Text style={[styles.stepLabel, isCompleted && styles.stepLabelDone]}>
+                {step.label}
+              </Text>
+              <Text style={[styles.timeText, compact && styles.timeTextCompact]}>
+                {formatTimestamp(stepTimeMap[step.key])}
+              </Text>
+            </View>
+          </View>
+        );
+      })}
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  container: {
+    borderTopWidth: 1,
+    borderTopColor: Colors.surfaceBorder,
+    marginTop: 12,
+    paddingTop: 10,
+    gap: 8,
+  },
+  containerCompact: {
+    marginTop: 8,
+    paddingTop: 8,
+    gap: 6,
+  },
+  row: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    minHeight: 24,
+  },
+  rowCompact: {
+    minHeight: 20,
+  },
+  indicatorColumn: {
+    width: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+    position: 'relative',
+  },
+  connector: {
+    position: 'absolute',
+    top: 12,
+    bottom: -12,
+    width: 1.5,
+  },
+  connectorDone: {
+    backgroundColor: Colors.accentBlue,
+  },
+  connectorPending: {
+    backgroundColor: Colors.surfaceBorder,
+  },
+  dot: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    borderWidth: 1.5,
+  },
+  dotDone: {
+    backgroundColor: Colors.accentBlue,
+    borderColor: Colors.accentBlue,
+  },
+  dotPending: {
+    backgroundColor: Colors.bg,
+    borderColor: Colors.surfaceBorder,
+  },
+  dotCurrent: {
+    borderColor: Colors.accentAmber,
+    backgroundColor: Colors.accentAmber,
+  },
+  textBlock: {
+    flex: 1,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginLeft: 8,
+  },
+  stepLabel: {
+    fontSize: 12,
+    color: Colors.textSecondary,
+    fontWeight: '500',
+  },
+  stepLabelDone: {
+    color: Colors.textPrimary,
+    fontWeight: '600',
+  },
+  timeText: {
+    fontSize: 11,
+    color: Colors.textMuted,
+  },
+  timeTextCompact: {
+    fontSize: 10,
+  },
+});

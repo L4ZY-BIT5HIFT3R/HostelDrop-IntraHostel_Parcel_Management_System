@@ -7,7 +7,7 @@ export default function RootLayout() {
 
   useEffect(() => {
     checkAuth();
-  }, []);
+  }, [checkAuth]);
 
   return (
     <Stack screenOptions={{ headerShown: false }}>

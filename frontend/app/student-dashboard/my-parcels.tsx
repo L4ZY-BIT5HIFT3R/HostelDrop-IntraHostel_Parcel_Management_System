@@ -11,7 +11,8 @@ import { Ionicons } from '@expo/vector-icons';
 import api from '../../utils/api';
 import { useAuthStore } from '../../store/authStore';
 import { Colors, GlassCard } from '../../utils/theme';
-import AnimatedCard, { STACK_CARD_HEIGHT, STACK_CARD_SPACING, STACK_FOCUS_OFFSET } from '../../components/AnimatedCard';
+import AnimatedCard, { STACK_CARD_SPACING, STACK_FOCUS_OFFSET } from '../../components/AnimatedCard';
+import ParcelTimeline from '../../components/ParcelTimeline';
 
 interface Parcel {
   _id: string;
@@ -22,8 +23,13 @@ interface Parcel {
   roll_number?: string;
   description?: string;
   created_at: string;
+  assigned_at?: string;
+  otp_sent_at?: string;
   delivered_at?: string;
+  status_history?: { event?: string; timestamp?: string }[];
 }
+
+const DELIVERED_STACK_CARD_HEIGHT = 200;
 
 export default function MyParcels() {
   const { user } = useAuthStore();
@@ -55,17 +61,17 @@ export default function MyParcels() {
   };
 
   const getStackPadding = (height: number) => ({
-    top: Math.max(4, (height - STACK_CARD_HEIGHT) / 2 - STACK_FOCUS_OFFSET - 12),
-    bottom: Math.max(120, (height - STACK_CARD_HEIGHT) / 2 + STACK_FOCUS_OFFSET + 96),
+    top: Math.max(4, (height - DELIVERED_STACK_CARD_HEIGHT) / 2 - STACK_FOCUS_OFFSET - 12),
+    bottom: Math.max(120, (height - DELIVERED_STACK_CARD_HEIGHT) / 2 + STACK_FOCUS_OFFSET + 96),
   });
 
   const updateActiveIndex = (offsetY: number, viewportHeight?: number) => {
     const height = viewportHeight ?? listHeight;
     if (height <= 0 || parcels.length === 0) return;
-    const step = STACK_CARD_HEIGHT + STACK_CARD_SPACING;
+    const step = DELIVERED_STACK_CARD_HEIGHT + STACK_CARD_SPACING;
     const { top } = getStackPadding(height);
     const centerY = offsetY + height / 2;
-    const rawIndex = (centerY - top - STACK_CARD_HEIGHT / 2) / step;
+    const rawIndex = (centerY - top - DELIVERED_STACK_CARD_HEIGHT / 2) / step;
     const nextIndex = Math.max(0, Math.min(parcels.length - 1, Math.round(rawIndex)));
     if (nextIndex !== activeIndexRef.current) {
       activeIndexRef.current = nextIndex;
@@ -87,20 +93,18 @@ export default function MyParcels() {
         </View>
 
         {item.description && (
-          <Text style={styles.description}>{item.description}</Text>
+          <Text style={styles.description} numberOfLines={1}>{item.description}</Text>
         )}
 
-        <View style={styles.dateInfo}>
-          <View style={styles.dateRow}>
-            <Ionicons name="calendar-outline" size={14} color={Colors.textMuted} />
-            <Text style={styles.dateLabel}>Received on:</Text>
-            <Text style={styles.dateValue}>
-              {item.delivered_at
-                ? new Date(item.delivered_at).toLocaleDateString()
-                : 'N/A'}
-            </Text>
-          </View>
-        </View>
+        <ParcelTimeline
+          history={item.status_history}
+          currentStatus={item.status}
+          createdAt={item.created_at}
+          assignedAt={item.assigned_at}
+          otpSentAt={item.otp_sent_at}
+          deliveredAt={item.delivered_at}
+          compact
+        />
       </View>
     </AnimatedCard>
   );
@@ -134,7 +138,7 @@ export default function MyParcels() {
           { useNativeDriver: true }
         )}
         scrollEventThrottle={16}
-        snapToInterval={STACK_CARD_HEIGHT + STACK_CARD_SPACING}
+        snapToInterval={DELIVERED_STACK_CARD_HEIGHT + STACK_CARD_SPACING}
         snapToAlignment="center"
         decelerationRate={0.992}
         showsVerticalScrollIndicator={false}
@@ -192,7 +196,7 @@ const styles = StyleSheet.create({
   },
   parcelCard: {
     ...GlassCard,
-    height: STACK_CARD_HEIGHT,
+    height: DELIVERED_STACK_CARD_HEIGHT,
     padding: 16,
     overflow: 'hidden',
   },
@@ -227,25 +231,6 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: Colors.textMuted,
     marginBottom: 12,
-  },
-  dateInfo: {
-    borderTopWidth: 1,
-    borderTopColor: Colors.surfaceBorder,
-    paddingTop: 12,
-  },
-  dateRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-  dateLabel: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: Colors.textSecondary,
-  },
-  dateValue: {
-    fontSize: 12,
-    color: Colors.textMuted,
   },
   emptyContainer: {
     flex: 1,

@@ -8,7 +8,7 @@ import os
 import logging
 from pathlib import Path
 from pydantic import BaseModel, Field, EmailStr
-from typing import List, Optional
+from typing import List, Optional, Dict, Any
 import uuid
 from datetime import datetime, timedelta
 import random
@@ -126,6 +126,12 @@ class HostelType:
 class ParcelStatus:
     PENDING = "PENDING"
     UNASSIGNED = "UNASSIGNED"
+    DELIVERED = "DELIVERED"
+
+class ParcelTimelineEvent:
+    LOGGED = "LOGGED"
+    ASSIGNED = "ASSIGNED"
+    OTP_SENT = "OTP_SENT"
     DELIVERED = "DELIVERED"
 
 class OTPPurpose:
@@ -317,6 +323,106 @@ def parse_object_id(raw_id: str, field_name: str) -> ObjectId:
 
 def generate_otp() -> str:
     return ''.join(random.choices(string.digits, k=6))
+
+def build_status_event(
+    event: str,
+    actor: Optional[dict] = None,
+    timestamp: Optional[datetime] = None,
+    meta: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    event_doc: Dict[str, Any] = {
+        "event": event,
+        "timestamp": timestamp or datetime.utcnow(),
+    }
+    if actor:
+        if actor.get("_id"):
+            event_doc["actor_id"] = str(actor["_id"])
+        if actor.get("role"):
+            event_doc["actor_role"] = actor["role"]
+    if meta:
+        event_doc["meta"] = meta
+    return event_doc
+
+def ensure_status_history(parcel: Dict[str, Any]) -> List[Dict[str, Any]]:
+    event_order = {
+        ParcelTimelineEvent.LOGGED: 0,
+        ParcelTimelineEvent.ASSIGNED: 1,
+        ParcelTimelineEvent.OTP_SENT: 2,
+        ParcelTimelineEvent.DELIVERED: 3,
+    }
+
+    history = parcel.get("status_history")
+    normalized: List[Dict[str, Any]] = []
+
+    if isinstance(history, list):
+        for item in history:
+            if not isinstance(item, dict):
+                continue
+            event_name = item.get("event")
+            if not event_name:
+                continue
+            event_doc = dict(item)
+            timestamp = event_doc.get("timestamp")
+            if not isinstance(timestamp, datetime):
+                if event_name == ParcelTimelineEvent.DELIVERED:
+                    timestamp = parcel.get("delivered_at")
+                elif event_name == ParcelTimelineEvent.OTP_SENT:
+                    timestamp = parcel.get("otp_sent_at")
+                elif event_name == ParcelTimelineEvent.ASSIGNED:
+                    timestamp = parcel.get("assigned_at") or parcel.get("updated_at")
+                else:
+                    timestamp = parcel.get("created_at")
+                event_doc["timestamp"] = timestamp or datetime.utcnow()
+            normalized.append(event_doc)
+
+    if not normalized:
+        created_at = parcel.get("created_at")
+        if created_at:
+            normalized.append({
+                "event": ParcelTimelineEvent.LOGGED,
+                "timestamp": created_at,
+            })
+
+        should_show_assigned = (
+            bool(parcel.get("roll_number"))
+            or bool(parcel.get("student_id"))
+            or parcel.get("status") in [ParcelStatus.PENDING, ParcelStatus.DELIVERED]
+        )
+        if should_show_assigned:
+            assigned_at = parcel.get("assigned_at") or parcel.get("updated_at") or created_at
+            if assigned_at:
+                normalized.append({
+                    "event": ParcelTimelineEvent.ASSIGNED,
+                    "timestamp": assigned_at,
+                })
+
+        otp_sent_at = parcel.get("otp_sent_at")
+        if otp_sent_at:
+            normalized.append({
+                "event": ParcelTimelineEvent.OTP_SENT,
+                "timestamp": otp_sent_at,
+            })
+
+        delivered_at = parcel.get("delivered_at")
+        if delivered_at:
+            normalized.append({
+                "event": ParcelTimelineEvent.DELIVERED,
+                "timestamp": delivered_at,
+            })
+
+    normalized.sort(
+        key=lambda evt: (
+            evt.get("timestamp") if isinstance(evt.get("timestamp"), datetime) else datetime.min,
+            event_order.get(evt.get("event"), 99),
+        )
+    )
+    return normalized
+
+def serialize_parcel(parcel: Dict[str, Any]) -> Dict[str, Any]:
+    if parcel.get("_id") is not None:
+        parcel["_id"] = str(parcel["_id"])
+    parcel["status_history"] = ensure_status_history(parcel)
+    return parcel
 
 def mask_email(email: str) -> str:
     if "@" not in email:
@@ -855,13 +961,21 @@ async def add_parcel(request: AddParcelRequest, background_tasks: BackgroundTask
     if request.hostel_type != current_user["hostel_type"]:
         raise HTTPException(status_code=403, detail="Guards can only add parcels for their own hostel")
     
+    created_at = datetime.utcnow()
     parcel_data = {
         "display_id": generate_display_id(request.description),
         "hostel_type": current_user["hostel_type"],
         "room_number": request.room_number,
         "description": request.description,
         "logged_by_guard": current_user["_id"],
-        "created_at": datetime.utcnow()
+        "created_at": created_at,
+        "status_history": [
+            build_status_event(
+                ParcelTimelineEvent.LOGGED,
+                actor=current_user,
+                timestamp=created_at,
+            )
+        ],
     }
     
     if request.roll_number:
@@ -875,6 +989,15 @@ async def add_parcel(request: AddParcelRequest, background_tasks: BackgroundTask
         parcel_data["roll_number"] = request.roll_number
         parcel_data["student_name"] = request.student_name
         parcel_data["status"] = ParcelStatus.PENDING  # Always PENDING if roll number is provided
+        parcel_data["assigned_at"] = created_at
+        parcel_data["status_history"].append(
+            build_status_event(
+                ParcelTimelineEvent.ASSIGNED,
+                actor=current_user,
+                timestamp=created_at,
+                meta={"roll_number": request.roll_number},
+            )
+        )
         
         if student:
             parcel_data["student_id"] = str(student["_id"])
@@ -926,7 +1049,7 @@ async def add_parcel(request: AddParcelRequest, background_tasks: BackgroundTask
                 logger.warning("Failed to send broadcast push: %s", str(e))
         background_tasks.add_task(broadcast_to_room, request.room_number, current_user["hostel_type"], parcel_data["_id"])
     
-    return {"message": "Parcel added successfully", "parcel": parcel_data}
+    return {"message": "Parcel added successfully", "parcel": serialize_parcel(parcel_data)}
 
 @api_router.put("/parcel/assign")
 async def assign_parcel(request: AssignParcelRequest, current_user: dict = Depends(get_current_user)):
@@ -954,17 +1077,30 @@ async def assign_parcel(request: AssignParcelRequest, current_user: dict = Depen
         raise HTTPException(status_code=404, detail=f"Student not found with roll number: {request.roll_number}")
     
     # Update parcel
+    assigned_at = datetime.utcnow()
     result = await db.parcels.update_one(
         {"_id": parcel_object_id},
-        {"$set": {
-            "student_id": str(student["_id"]),
-            "roll_number": request.roll_number,
-            "student_name": student["name"],
-            "student_email": student["email"],
-            "room_number": request.room_number,
-            "hostel_type": current_user["hostel_type"],
-            "status": ParcelStatus.PENDING
-        }}
+        {
+            "$set": {
+                "student_id": str(student["_id"]),
+                "roll_number": request.roll_number,
+                "student_name": student["name"],
+                "student_email": student["email"],
+                "room_number": request.room_number,
+                "hostel_type": current_user["hostel_type"],
+                "status": ParcelStatus.PENDING,
+                "assigned_at": assigned_at,
+                "updated_at": assigned_at,
+            },
+            "$push": {
+                "status_history": build_status_event(
+                    ParcelTimelineEvent.ASSIGNED,
+                    actor=current_user,
+                    timestamp=assigned_at,
+                    meta={"roll_number": request.roll_number},
+                )
+            },
+        }
     )
     
     if result.modified_count == 0:
@@ -1005,6 +1141,7 @@ async def update_parcel(request: UpdateParcelRequest, current_user: dict = Depen
         raise HTTPException(status_code=400, detail="Delivered parcels cannot be edited")
 
     updates = {}
+    append_assigned_event = False
     provided_fields = request.model_fields_set
 
     if "room_number" in provided_fields:
@@ -1051,15 +1188,27 @@ async def update_parcel(request: UpdateParcelRequest, current_user: dict = Depen
             updates["student_email"] = student["email"]
             updates["student_name"] = (request.student_name or "").strip() or student["name"]
             updates["status"] = ParcelStatus.PENDING
+            updates["assigned_at"] = datetime.utcnow()
+            append_assigned_event = True
 
     if not updates:
         raise HTTPException(status_code=400, detail="No fields provided to update")
 
     updates["updated_at"] = datetime.utcnow()
-    await db.parcels.update_one({"_id": parcel_object_id}, {"$set": updates})
+    update_doc: Dict[str, Any] = {"$set": updates}
+    if append_assigned_event:
+        update_doc["$push"] = {
+            "status_history": build_status_event(
+                ParcelTimelineEvent.ASSIGNED,
+                actor=current_user,
+                timestamp=updates["assigned_at"],
+                meta={"roll_number": updates.get("roll_number")},
+            )
+        }
+
+    await db.parcels.update_one({"_id": parcel_object_id}, update_doc)
     updated_parcel = await db.parcels.find_one({"_id": parcel_object_id})
-    updated_parcel["_id"] = str(updated_parcel["_id"])
-    return {"message": "Parcel updated successfully", "parcel": updated_parcel}
+    return {"message": "Parcel updated successfully", "parcel": serialize_parcel(updated_parcel)}
 
 @api_router.post("/parcel/send-otp")
 async def send_parcel_otp(request: SendOTPRequest, current_user: dict = Depends(get_current_user)):
@@ -1108,6 +1257,21 @@ async def send_parcel_otp(request: SendOTPRequest, current_user: dict = Depends(
     
     # Send OTP
     await send_email_otp(parcel["student_email"], otp_code)
+
+    otp_sent_at = datetime.utcnow()
+    await db.parcels.update_one(
+        {"_id": parcel_object_id},
+        {
+            "$set": {"otp_sent_at": otp_sent_at},
+            "$push": {
+                "status_history": build_status_event(
+                    ParcelTimelineEvent.OTP_SENT,
+                    actor=current_user,
+                    timestamp=otp_sent_at,
+                )
+            },
+        },
+    )
     
     response_payload = {
         "message": "OTP sent to student email",
@@ -1155,12 +1319,23 @@ async def verify_parcel_otp(request: VerifyParcelOTPRequest, current_user: dict 
     )
     
     # Update parcel status
+    delivered_at = datetime.utcnow()
     await db.parcels.update_one(
         {"_id": parcel_object_id},
-        {"$set": {
-            "status": ParcelStatus.DELIVERED,
-            "delivered_at": datetime.utcnow()
-        }}
+        {
+            "$set": {
+                "status": ParcelStatus.DELIVERED,
+                "delivered_at": delivered_at,
+            },
+            "$push": {
+                "status_history": build_status_event(
+                    ParcelTimelineEvent.DELIVERED,
+                    actor=current_user,
+                    timestamp=delivered_at,
+                    meta={"method": "OTP"},
+                )
+            },
+        }
     )
     
     return {"message": "Parcel delivered successfully"}
@@ -1183,9 +1358,23 @@ async def generate_parcel_qr(request: GenerateQRRequest, current_user: dict = De
     
     # Generate new token and attach to the parcel document
     qr_token = generate_qr_token()
+    qr_generated_at = datetime.utcnow()
     await db.parcels.update_one(
         {"_id": parcel_object_id},
-        {"$set": {"qr_pickup_token": qr_token}}
+        {
+            "$set": {
+                "qr_pickup_token": qr_token,
+                "otp_sent_at": qr_generated_at,
+            },
+            "$push": {
+                "status_history": build_status_event(
+                    ParcelTimelineEvent.OTP_SENT,
+                    actor=current_user,
+                    timestamp=qr_generated_at,
+                    meta={"method": "QR_TOKEN"},
+                )
+            },
+        },
     )
     
     return {"message": "QR token generated", "token": qr_token}
@@ -1253,13 +1442,23 @@ async def verify_parcel_qr(request: VerifyQRRequest, current_user: dict = Depend
         raise HTTPException(status_code=401, detail="Invalid or expired QR code")
         
     # Mark as delivered and clear token and delegation fields
+    delivered_at = datetime.utcnow()
+    collected_by_delegate = parcel.get("student_id") != current_user["_id"]
     await db.parcels.update_one(
         {"_id": parcel_object_id},
         {
             "$set": {
                 "status": ParcelStatus.DELIVERED,
-                "delivered_at": datetime.utcnow(),
-                "collected_by_delegate": parcel.get("student_id") != current_user["_id"]
+                "delivered_at": delivered_at,
+                "collected_by_delegate": collected_by_delegate,
+            },
+            "$push": {
+                "status_history": build_status_event(
+                    ParcelTimelineEvent.DELIVERED,
+                    actor=current_user,
+                    timestamp=delivered_at,
+                    meta={"method": "QR", "collected_by_delegate": collected_by_delegate},
+                )
             },
             "$unset": {
                 "qr_pickup_token": "",
@@ -1292,10 +1491,9 @@ async def get_hostel_parcels(hostel_type: str, status: Optional[str] = None, cur
         query["status"] = status
     
     parcels = await db.parcels.find(query).sort("created_at", -1).to_list(1000)
-    
-    for parcel in parcels:
-        parcel["_id"] = str(parcel["_id"])
-    
+
+    parcels = [serialize_parcel(parcel) for parcel in parcels]
+
     return {"parcels": parcels}
 
 @api_router.get("/parcel/student/my-parcels")
@@ -1308,10 +1506,9 @@ async def get_my_parcels(current_user: dict = Depends(get_current_user)):
         "student_id": current_user["_id"],
         "status": ParcelStatus.DELIVERED
     }).sort("delivered_at", -1).to_list(1000)
-    
-    for parcel in parcels:
-        parcel["_id"] = str(parcel["_id"])
-    
+
+    parcels = [serialize_parcel(parcel) for parcel in parcels]
+
     return {"parcels": parcels}
 
 @api_router.get("/parcel/guard/pending")
@@ -1324,10 +1521,9 @@ async def get_pending_parcels(current_user: dict = Depends(get_current_user)):
         "hostel_type": current_user["hostel_type"],
         "status": {"$in": [ParcelStatus.PENDING, ParcelStatus.UNASSIGNED]}
     }).sort("created_at", -1).to_list(1000)
-    
-    for parcel in parcels:
-        parcel["_id"] = str(parcel["_id"])
-    
+
+    parcels = [serialize_parcel(parcel) for parcel in parcels]
+
     return {"parcels": parcels}
 
 @api_router.get("/parcel/guard/delivered")
@@ -1340,10 +1536,9 @@ async def get_delivered_parcels(current_user: dict = Depends(get_current_user)):
         "hostel_type": current_user["hostel_type"],
         "status": ParcelStatus.DELIVERED
     }).sort("delivered_at", -1).to_list(1000)
-    
-    for parcel in parcels:
-        parcel["_id"] = str(parcel["_id"])
-    
+
+    parcels = [serialize_parcel(parcel) for parcel in parcels]
+
     return {"parcels": parcels}
 
 @api_router.get("/student/{student_id}")
