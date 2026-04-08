@@ -11,8 +11,8 @@ Your Hostel Parcel Management System is **fully populated** with test data and r
 ### ✅ Users (8 Total)
 
 **Guards (2)**
-- Boys Hostel Guard: `boys_guard` / `guard123`
-- Girls Hostel Guard: `girls_guard` / `guard123`
+- Boys Hostel Guard: `boys_guard` / `<SEED_GUARD_PASSWORD>`
+- Girls Hostel Guard: `girls_guard` / `<SEED_GUARD_PASSWORD>`
 
 **Students (6)**
 
@@ -55,7 +55,7 @@ Your Hostel Parcel Management System is **fully populated** with test data and r
 1. Open app
 2. Select "Guard" → "Boys Hostel"
 3. Username: boys_guard
-4. Password: guard123
+4. Password: <SEED_GUARD_PASSWORD>
 5. ✅ You'll see 5 parcels immediately!
 ```
 
@@ -288,7 +288,7 @@ All documentation is in the `/app` directory:
 **Your app is 100% ready to test and demo!**
 
 1. Open Expo logs to get QR code
-2. Login as `boys_guard` / `guard123`
+2. Login as `boys_guard` / `<SEED_GUARD_PASSWORD>`
 3. See 5 parcels instantly
 4. Test the complete flow
 5. Demo to your professors!
@@ -317,3 +317,4 @@ All documentation is in the `/app` directory:
 - Read TESTING_CHEAT_SHEET.md
 - Read QUICK_START.md
 - Check backend logs for errors
+

@@ -29,12 +29,12 @@ All components are successfully deployed and running:
 
 **Boys Hostel Guard**
 - Username: `boys_guard`
-- Password: `guard123`
+- Password: `<SEED_GUARD_PASSWORD>`
 - Hostel: Boys
 
 **Girls Hostel Guard**
 - Username: `girls_guard`
-- Password: `guard123`
+- Password: `<SEED_GUARD_PASSWORD>`
 - Hostel: Girls
 
 ### Students (Roll Number + Email + OTP)
@@ -75,7 +75,7 @@ All components are successfully deployed and running:
 
 ### Test 1: Guard Login & Add Parcel
 1. Open app → Select "Guard" → Select "Boys Hostel"
-2. Login with: `boys_guard` / `guard123`
+2. Login with: `boys_guard` / `<SEED_GUARD_PASSWORD>`
 3. Click "Add Parcel" button
 4. Enter:
    - Room Number: `101`
@@ -140,7 +140,7 @@ curl -X POST http://localhost:8001/api/admin/add-user \
     "role": "GUARD",
     "hostel_type": "BOYS",
     "username": "new_guard",
-    "password": "password123"
+    "password": "<TEST_GUARD_PASSWORD>"
   }'
 
 # Add a new student
@@ -335,3 +335,4 @@ Refer to:
 ---
 
 **Your Hostel Parcel Management System is ready! Start testing and enjoy! 🎉**
+

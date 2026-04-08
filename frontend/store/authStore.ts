@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import { clearAuthSession, getAuthToken, getUserData, setAuthSession } from '../utils/sessionStorage';
 
 interface User {
   _id: string;
@@ -36,21 +36,19 @@ export const useAuthStore = create<AuthState>((set) => ({
   setToken: (token) => set({ token }),
   
   login: async (user, token) => {
-    await AsyncStorage.setItem('auth_token', token);
-    await AsyncStorage.setItem('user_data', JSON.stringify(user));
+    await setAuthSession(token, user);
     set({ user, token, isAuthenticated: true });
   },
   
   logout: async () => {
-    await AsyncStorage.removeItem('auth_token');
-    await AsyncStorage.removeItem('user_data');
+    await clearAuthSession();
     set({ user: null, token: null, isAuthenticated: false });
   },
   
   checkAuth: async () => {
     try {
-      const token = await AsyncStorage.getItem('auth_token');
-      const userData = await AsyncStorage.getItem('user_data');
+      const token = await getAuthToken();
+      const userData = await getUserData();
       
       if (token && userData) {
         const user = JSON.parse(userData);

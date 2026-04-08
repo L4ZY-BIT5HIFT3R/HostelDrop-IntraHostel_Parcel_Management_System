@@ -16,6 +16,7 @@ import { useState } from 'react';
 import api from '../utils/api';
 import { useAuthStore } from '../store/authStore';
 import { Colors, GlassCard, GlassInput } from '../utils/theme';
+import { extractErrorMessage } from '../utils/errorMessage';
 
 export default function AdminLogin() {
   const router = useRouter();
@@ -25,17 +26,6 @@ export default function AdminLogin() {
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
-
-  const getErrorMessage = (error: any) => {
-    const detail = error?.response?.data?.detail;
-    if (Array.isArray(detail)) {
-      return detail.map((item) => item?.msg).filter(Boolean).join('\n') || 'Request failed.';
-    }
-    if (typeof detail === 'string') {
-      return detail;
-    }
-    return 'Invalid credentials. Try again.';
-  };
 
   const handleLogin = async () => {
     if (!email.trim() || !password.trim()) {
@@ -54,7 +44,7 @@ export default function AdminLogin() {
       await login(response.data.user, response.data.access_token);
       router.replace('/admin-panel');
     } catch (error: any) {
-      setErrorMessage(getErrorMessage(error));
+      setErrorMessage(extractErrorMessage(error, 'Invalid credentials. Try again.'));
     } finally {
       setLoading(false);
     }

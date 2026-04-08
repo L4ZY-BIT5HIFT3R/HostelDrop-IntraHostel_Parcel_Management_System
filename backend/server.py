@@ -1,18 +1,21 @@
 import asyncio
-from fastapi import FastAPI, APIRouter, HTTPException, Depends, status, BackgroundTasks, Request
+from fastapi import FastAPI, APIRouter, HTTPException, Depends, status, BackgroundTasks, Request, Query as ApiQuery, Path as ApiPath
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from fastapi.responses import JSONResponse
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
 import os
 import logging
-from pathlib import Path
-from pydantic import BaseModel, Field, EmailStr
+from pathlib import Path as FsPath
+from pydantic import BaseModel, EmailStr, ConfigDict, field_validator, model_validator
 from typing import List, Optional, Dict, Any
 import uuid
 from datetime import datetime, timedelta
 import random
 import string
+import re
+import secrets
 import jwt
 from passlib.context import CryptContext
 from bson import ObjectId
@@ -37,7 +40,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-ROOT_DIR = Path(__file__).parent
+ROOT_DIR = FsPath(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
 
 # MongoDB connection
@@ -53,14 +56,19 @@ APP_ENV = os.environ.get("APP_ENV", "production").strip().lower()
 if APP_ENV not in {"production", "development", "test"}:
     raise RuntimeError("APP_ENV must be one of: production, development, test")
 IS_PRODUCTION = APP_ENV == "production"
+MIN_PASSWORD_LENGTH = max(8, int(os.environ.get("MIN_PASSWORD_LENGTH", "8")))
+MIN_JWT_SECRET_LENGTH = max(16, int(os.environ.get("MIN_JWT_SECRET_LENGTH", "32")))
 
 # JWT settings
 SECRET_KEY = os.environ.get('JWT_SECRET_KEY')
 if not SECRET_KEY:
     if IS_PRODUCTION:
         raise RuntimeError("JWT_SECRET_KEY must be set in production")
-    SECRET_KEY = 'dev-insecure-secret-change-me'
-    logger.warning("JWT_SECRET_KEY not set. Using development fallback secret.")
+    raise RuntimeError("JWT_SECRET_KEY must be set in non-production environments as well")
+if len(SECRET_KEY) < MIN_JWT_SECRET_LENGTH:
+    if IS_PRODUCTION:
+        raise RuntimeError(f"JWT_SECRET_KEY must be at least {MIN_JWT_SECRET_LENGTH} characters in production")
+    logger.warning("JWT_SECRET_KEY is shorter than %s characters", MIN_JWT_SECRET_LENGTH)
 
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24  # 24 hours
@@ -72,6 +80,10 @@ INCLUDE_DEBUG_OTP_IN_RESPONSE = os.environ.get(
 ).strip().lower() == "true"
 if IS_PRODUCTION and INCLUDE_DEBUG_OTP_IN_RESPONSE:
     raise RuntimeError("INCLUDE_DEBUG_OTP_IN_RESPONSE cannot be enabled in production")
+if IS_PRODUCTION and ENABLE_SENSITIVE_LOGGING:
+    raise RuntimeError("ENABLE_SENSITIVE_LOGGING cannot be enabled in production")
+
+TRUST_PROXY_HEADERS = os.environ.get("TRUST_PROXY_HEADERS", "false").strip().lower() == "true"
 
 # Security
 security = HTTPBearer()
@@ -81,6 +93,28 @@ app = FastAPI(title="Hostel Parcel Management System")
 
 # Create a router with the /api prefix
 api_router = APIRouter(prefix="/api")
+
+
+@app.middleware("http")
+async def enforce_request_limits(request: Request, call_next):
+    if len(request.url.query.encode("utf-8")) > MAX_QUERY_STRING_BYTES:
+        return JSONResponse(status_code=414, content={"detail": "Query string too large"})
+
+    content_length = request.headers.get("content-length")
+    if request.method in {"POST", "PUT", "PATCH"} and content_length is None:
+        return JSONResponse(status_code=411, content={"detail": "Content-Length header is required"})
+
+    if content_length is not None:
+        try:
+            parsed_length = int(content_length)
+        except ValueError:
+            return JSONResponse(status_code=400, content={"detail": "Malformed Content-Length header"})
+        if parsed_length < 0:
+            return JSONResponse(status_code=400, content={"detail": "Malformed Content-Length header"})
+        if parsed_length > MAX_REQUEST_BODY_BYTES:
+            return JSONResponse(status_code=413, content={"detail": "Request body too large"})
+
+    return await call_next(request)
 
 # Gmail SMTP Configuration (App Password)
 # Set these in backend/.env:
@@ -98,8 +132,11 @@ ADMIN_PASSWORD = os.environ.get('ADMIN_PASSWORD')
 if not ADMIN_PASSWORD:
     if IS_PRODUCTION:
         raise RuntimeError("ADMIN_PASSWORD must be set in production")
-    ADMIN_PASSWORD = 'admin123'
-    logger.warning("ADMIN_PASSWORD not set. Using development fallback password.")
+    raise RuntimeError("ADMIN_PASSWORD must be set in non-production environments as well")
+if len(ADMIN_PASSWORD) < MIN_PASSWORD_LENGTH:
+    if IS_PRODUCTION:
+        raise RuntimeError(f"ADMIN_PASSWORD must be at least {MIN_PASSWORD_LENGTH} characters in production")
+    logger.warning("ADMIN_PASSWORD is shorter than %s characters", MIN_PASSWORD_LENGTH)
 
 AUTO_DELETE_DELIVERED_INTERVAL_SECONDS = max(
     1,
@@ -143,37 +180,263 @@ class OTPPurpose:
     PARCEL_DELIVERY = "PARCEL_DELIVERY"
     PASSWORD_RESET = "PASSWORD_RESET"
 
+# Input sanitization and request-size controls
+MAX_REQUEST_BODY_BYTES = max(1024, int(os.environ.get("MAX_REQUEST_BODY_BYTES", "32768")))
+MAX_QUERY_STRING_BYTES = max(128, int(os.environ.get("MAX_QUERY_STRING_BYTES", "2048")))
+MAX_STRING_FIELD_LENGTH = 512
+
+HOSTEL_TYPE_VALUES = {HostelType.BOYS, HostelType.GIRLS}
+USER_ROLE_VALUES = {UserRole.GUARD, UserRole.STUDENT, UserRole.ADMIN}
+PARCEL_STATUS_VALUES = {ParcelStatus.PENDING, ParcelStatus.UNASSIGNED, ParcelStatus.DELIVERED}
+
+CONTROL_CHARS_PATTERN = re.compile(r"[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]")
+OBJECT_ID_PATTERN = re.compile(r"^[0-9a-fA-F]{24}$")
+USERNAME_PATTERN = re.compile(r"^[A-Za-z0-9_.-]{3,64}$")
+ROLL_NUMBER_PATTERN = re.compile(r"^[A-Za-z0-9-]{2,32}$")
+ROOM_NUMBER_PATTERN = re.compile(r"^[A-Za-z0-9-]{1,16}$")
+OTP_PATTERN = re.compile(r"^\d{6}$")
+CONTACT_NUMBER_PATTERN = re.compile(r"^\+?[0-9]{7,15}$")
+DELEGATION_CODE_PATTERN = re.compile(r"^[A-Z0-9]{6}$")
+EXPO_TOKEN_PATTERN = re.compile(r"^(Expo|Exponent)PushToken\[[^\]]{8,200}\]$")
+
+
+def _reject_control_chars(value: str, field_name: str) -> str:
+    if CONTROL_CHARS_PATTERN.search(value):
+        raise ValueError(f"{field_name} contains invalid control characters")
+    return value
+
+
+def _normalize_hostel_type(value: str) -> str:
+    normalized = value.strip().upper()
+    if normalized not in HOSTEL_TYPE_VALUES:
+        raise ValueError("Invalid hostel type")
+    return normalized
+
+
+def _normalize_role(value: str) -> str:
+    normalized = value.strip().upper()
+    if normalized not in USER_ROLE_VALUES:
+        raise ValueError("Invalid role")
+    return normalized
+
+
+def _normalize_status(value: str) -> str:
+    normalized = value.strip().upper()
+    if normalized not in PARCEL_STATUS_VALUES:
+        raise ValueError("Invalid parcel status")
+    return normalized
+
+
+def _validate_password(value: str) -> str:
+    _reject_control_chars(value, "password")
+    if len(value) < MIN_PASSWORD_LENGTH or len(value) > 128:
+        raise ValueError(f"Password must be between {MIN_PASSWORD_LENGTH} and 128 characters")
+    return value
+
+
+def _validate_object_id_string(value: str, field_name: str = "ID") -> str:
+    cleaned = value.strip()
+    if not OBJECT_ID_PATTERN.fullmatch(cleaned):
+        raise ValueError(f"Invalid {field_name} format")
+    return cleaned
+
+
+def _validate_roll_number(value: str) -> str:
+    cleaned = value.strip()
+    if not ROLL_NUMBER_PATTERN.fullmatch(cleaned):
+        raise ValueError("Roll number must be 2-32 characters and contain only letters, digits, or hyphens")
+    return cleaned
+
+
+def _validate_room_number(value: str) -> str:
+    cleaned = value.strip()
+    if not ROOM_NUMBER_PATTERN.fullmatch(cleaned):
+        raise ValueError("Room number must be 1-16 characters and contain only letters, digits, or hyphens")
+    return cleaned
+
+
+def _validate_name(value: str, field_name: str = "Name") -> str:
+    cleaned = value.strip()
+    _reject_control_chars(cleaned, field_name)
+    if len(cleaned) < 2 or len(cleaned) > 80:
+        raise ValueError(f"{field_name} must be between 2 and 80 characters")
+    if not any(ch.isalnum() for ch in cleaned):
+        raise ValueError(f"{field_name} is malformed")
+    return cleaned
+
+
+def _validate_description(value: str) -> str:
+    cleaned = value.strip()
+    _reject_control_chars(cleaned, "description")
+    if len(cleaned) > 300:
+        raise ValueError("Description cannot exceed 300 characters")
+    return cleaned
+
+
+def _validate_optional_contact_number(value: str) -> str:
+    cleaned = value.strip()
+    if not CONTACT_NUMBER_PATTERN.fullmatch(cleaned):
+        raise ValueError("Contact number must be 7-15 digits, optionally prefixed with +")
+    return cleaned
+
+
+def _validate_username(value: str) -> str:
+    cleaned = value.strip()
+    if not USERNAME_PATTERN.fullmatch(cleaned):
+        raise ValueError("Username must be 3-64 characters and contain only letters, digits, ., _, or -")
+    return cleaned
+
+
+def _validate_otp(value: str) -> str:
+    cleaned = value.strip()
+    if not OTP_PATTERN.fullmatch(cleaned):
+        raise ValueError("OTP must be exactly 6 digits")
+    return cleaned
+
+
+def _validate_qr_token(value: str) -> str:
+    cleaned = value.strip()
+    _reject_control_chars(cleaned, "token")
+    if len(cleaned) > 128:
+        raise ValueError("QR token exceeds maximum length")
+    try:
+        uuid.UUID(cleaned)
+    except ValueError as exc:
+        raise ValueError("Invalid QR token format") from exc
+    return cleaned
+
+
+class SanitizedRequestModel(BaseModel):
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+    @field_validator("*", mode="before")
+    @classmethod
+    def validate_raw_string_fields(cls, value):
+        if isinstance(value, str):
+            if len(value) > MAX_STRING_FIELD_LENGTH:
+                raise ValueError("Input field exceeds maximum allowed length")
+            _reject_control_chars(value, "input")
+        return value
+
+
 # Request Models
-class GuardLoginRequest(BaseModel):
+class GuardLoginRequest(SanitizedRequestModel):
     username: str
     password: str
     hostel_type: str
 
-class StudentRegisterRequest(BaseModel):
+    @field_validator("username")
+    @classmethod
+    def validate_username(cls, value: str) -> str:
+        return _validate_username(value)
+
+    @field_validator("password")
+    @classmethod
+    def validate_password(cls, value: str) -> str:
+        return _validate_password(value)
+
+    @field_validator("hostel_type")
+    @classmethod
+    def validate_hostel_type(cls, value: str) -> str:
+        return _normalize_hostel_type(value)
+
+
+class StudentRegisterRequest(SanitizedRequestModel):
     roll_number: str
-    email: str
+    email: EmailStr
     hostel_type: str
 
-class StudentRegisterVerify(BaseModel):
+    @field_validator("roll_number")
+    @classmethod
+    def validate_roll_number(cls, value: str) -> str:
+        return _validate_roll_number(value)
+
+    @field_validator("hostel_type")
+    @classmethod
+    def validate_hostel_type(cls, value: str) -> str:
+        return _normalize_hostel_type(value)
+
+
+class StudentRegisterVerify(SanitizedRequestModel):
     name: str
     roll_number: str
-    email: str
+    email: EmailStr
     hostel_type: str
     room_number: str
     contact_number: Optional[str] = None
     password: str
     otp_code: str
 
-class StudentLoginRequest(BaseModel):
+    @field_validator("name")
+    @classmethod
+    def validate_name(cls, value: str) -> str:
+        return _validate_name(value, "Name")
+
+    @field_validator("roll_number")
+    @classmethod
+    def validate_roll_number(cls, value: str) -> str:
+        return _validate_roll_number(value)
+
+    @field_validator("hostel_type")
+    @classmethod
+    def validate_hostel_type(cls, value: str) -> str:
+        return _normalize_hostel_type(value)
+
+    @field_validator("room_number")
+    @classmethod
+    def validate_room_number(cls, value: str) -> str:
+        return _validate_room_number(value)
+
+    @field_validator("contact_number")
+    @classmethod
+    def validate_contact_number(cls, value: Optional[str]) -> Optional[str]:
+        if value is None or value == "":
+            return None
+        return _validate_optional_contact_number(value)
+
+    @field_validator("password")
+    @classmethod
+    def validate_password(cls, value: str) -> str:
+        return _validate_password(value)
+
+    @field_validator("otp_code")
+    @classmethod
+    def validate_otp_code(cls, value: str) -> str:
+        return _validate_otp(value)
+
+
+class StudentLoginRequest(SanitizedRequestModel):
     roll_number: str
     password: str
     hostel_type: str
 
-class AdminLoginRequest(BaseModel):
+    @field_validator("roll_number")
+    @classmethod
+    def validate_roll_number(cls, value: str) -> str:
+        return _validate_roll_number(value)
+
+    @field_validator("password")
+    @classmethod
+    def validate_password(cls, value: str) -> str:
+        return _validate_password(value)
+
+    @field_validator("hostel_type")
+    @classmethod
+    def validate_hostel_type(cls, value: str) -> str:
+        return _normalize_hostel_type(value)
+
+
+class AdminLoginRequest(SanitizedRequestModel):
     email: EmailStr
     password: str
 
-class AddUserRequest(BaseModel):
+    @field_validator("password")
+    @classmethod
+    def validate_password(cls, value: str) -> str:
+        return _validate_password(value)
+
+
+class AddUserRequest(SanitizedRequestModel):
     name: str
     role: str
     hostel_type: str
@@ -184,65 +447,323 @@ class AddUserRequest(BaseModel):
     room_number: Optional[str] = None
     contact_number: Optional[str] = None
 
-class AddParcelRequest(BaseModel):
+    @field_validator("name")
+    @classmethod
+    def validate_name(cls, value: str) -> str:
+        return _validate_name(value, "Name")
+
+    @field_validator("role")
+    @classmethod
+    def validate_role(cls, value: str) -> str:
+        return _normalize_role(value)
+
+    @field_validator("hostel_type")
+    @classmethod
+    def validate_hostel_type(cls, value: str) -> str:
+        return _normalize_hostel_type(value)
+
+    @field_validator("username")
+    @classmethod
+    def validate_username(cls, value: Optional[str]) -> Optional[str]:
+        if value is None or value == "":
+            return None
+        return _validate_username(value)
+
+    @field_validator("password")
+    @classmethod
+    def validate_password(cls, value: Optional[str]) -> Optional[str]:
+        if value is None or value == "":
+            return None
+        return _validate_password(value)
+
+    @field_validator("roll_number")
+    @classmethod
+    def validate_roll_number(cls, value: Optional[str]) -> Optional[str]:
+        if value is None or value == "":
+            return None
+        return _validate_roll_number(value)
+
+    @field_validator("room_number")
+    @classmethod
+    def validate_room_number(cls, value: Optional[str]) -> Optional[str]:
+        if value is None or value == "":
+            return None
+        return _validate_room_number(value)
+
+    @field_validator("contact_number")
+    @classmethod
+    def validate_contact_number(cls, value: Optional[str]) -> Optional[str]:
+        if value is None or value == "":
+            return None
+        return _validate_optional_contact_number(value)
+
+    @model_validator(mode="after")
+    def validate_role_specific_fields(self):
+        if self.role == UserRole.GUARD and (not self.username or not self.password):
+            raise ValueError("Username and password required for guards")
+        if self.role == UserRole.STUDENT and (not self.roll_number or not self.email or not self.room_number):
+            raise ValueError("Roll number, email, and room number required for students")
+        return self
+
+
+class AddParcelRequest(SanitizedRequestModel):
     hostel_type: str
     room_number: str
     roll_number: Optional[str] = None
     student_name: Optional[str] = None
     description: Optional[str] = None
 
-class AssignParcelRequest(BaseModel):
+    @field_validator("hostel_type")
+    @classmethod
+    def validate_hostel_type(cls, value: str) -> str:
+        return _normalize_hostel_type(value)
+
+    @field_validator("room_number")
+    @classmethod
+    def validate_room_number(cls, value: str) -> str:
+        return _validate_room_number(value)
+
+    @field_validator("roll_number")
+    @classmethod
+    def validate_roll_number(cls, value: Optional[str]) -> Optional[str]:
+        if value is None or value == "":
+            return None
+        return _validate_roll_number(value)
+
+    @field_validator("student_name")
+    @classmethod
+    def validate_student_name(cls, value: Optional[str]) -> Optional[str]:
+        if value is None:
+            return None
+        cleaned = value.strip()
+        if cleaned == "":
+            return None
+        return _validate_name(cleaned, "Student name")
+
+    @field_validator("description")
+    @classmethod
+    def validate_description(cls, value: Optional[str]) -> Optional[str]:
+        if value is None:
+            return None
+        cleaned = _validate_description(value)
+        return cleaned or None
+
+
+class AssignParcelRequest(SanitizedRequestModel):
     parcel_id: str
     roll_number: str
     hostel_type: str
     room_number: str
 
-class UpdateParcelRequest(BaseModel):
+    @field_validator("parcel_id")
+    @classmethod
+    def validate_parcel_id(cls, value: str) -> str:
+        return _validate_object_id_string(value, "parcel ID")
+
+    @field_validator("roll_number")
+    @classmethod
+    def validate_roll_number(cls, value: str) -> str:
+        return _validate_roll_number(value)
+
+    @field_validator("hostel_type")
+    @classmethod
+    def validate_hostel_type(cls, value: str) -> str:
+        return _normalize_hostel_type(value)
+
+    @field_validator("room_number")
+    @classmethod
+    def validate_room_number(cls, value: str) -> str:
+        return _validate_room_number(value)
+
+
+class UpdateParcelRequest(SanitizedRequestModel):
     parcel_id: str
     room_number: Optional[str] = None
     roll_number: Optional[str] = None
     student_name: Optional[str] = None
     description: Optional[str] = None
 
-class SendOTPRequest(BaseModel):
+    @field_validator("parcel_id")
+    @classmethod
+    def validate_parcel_id(cls, value: str) -> str:
+        return _validate_object_id_string(value, "parcel ID")
+
+    @field_validator("room_number")
+    @classmethod
+    def validate_room_number(cls, value: Optional[str]) -> Optional[str]:
+        if value is None:
+            return None
+        cleaned = value.strip()
+        if cleaned == "":
+            return ""
+        return _validate_room_number(cleaned)
+
+    @field_validator("roll_number")
+    @classmethod
+    def validate_roll_number(cls, value: Optional[str]) -> Optional[str]:
+        if value is None:
+            return None
+        cleaned = value.strip()
+        if cleaned == "":
+            return ""
+        return _validate_roll_number(cleaned)
+
+    @field_validator("student_name")
+    @classmethod
+    def validate_student_name(cls, value: Optional[str]) -> Optional[str]:
+        if value is None:
+            return None
+        cleaned = value.strip()
+        if cleaned == "":
+            return ""
+        return _validate_name(cleaned, "Student name")
+
+    @field_validator("description")
+    @classmethod
+    def validate_description(cls, value: Optional[str]) -> Optional[str]:
+        if value is None:
+            return None
+        cleaned = _validate_description(value)
+        return cleaned
+
+
+class SendOTPRequest(SanitizedRequestModel):
     parcel_id: str
 
-class VerifyParcelOTPRequest(BaseModel):
+    @field_validator("parcel_id")
+    @classmethod
+    def validate_parcel_id(cls, value: str) -> str:
+        return _validate_object_id_string(value, "parcel ID")
+
+
+class VerifyParcelOTPRequest(SanitizedRequestModel):
     parcel_id: str
     otp_code: str
 
-class UpdateExpoTokenRequest(BaseModel):
+    @field_validator("parcel_id")
+    @classmethod
+    def validate_parcel_id(cls, value: str) -> str:
+        return _validate_object_id_string(value, "parcel ID")
+
+    @field_validator("otp_code")
+    @classmethod
+    def validate_otp_code(cls, value: str) -> str:
+        return _validate_otp(value)
+
+
+class UpdateExpoTokenRequest(SanitizedRequestModel):
     expo_push_token: str
 
-class ForgotPasswordRequest(BaseModel):
+    @field_validator("expo_push_token")
+    @classmethod
+    def validate_expo_push_token(cls, value: str) -> str:
+        cleaned = value.strip()
+        if not EXPO_TOKEN_PATTERN.fullmatch(cleaned):
+            raise ValueError("Invalid Expo push token format")
+        return cleaned
+
+
+class ForgotPasswordRequest(SanitizedRequestModel):
     roll_number: str
     hostel_type: str
 
-class ResetPasswordVerify(BaseModel):
+    @field_validator("roll_number")
+    @classmethod
+    def validate_roll_number(cls, value: str) -> str:
+        return _validate_roll_number(value)
+
+    @field_validator("hostel_type")
+    @classmethod
+    def validate_hostel_type(cls, value: str) -> str:
+        return _normalize_hostel_type(value)
+
+
+class ResetPasswordVerify(SanitizedRequestModel):
     roll_number: str
     hostel_type: str
     otp_code: str
     new_password: str
 
-class ChangePasswordRequest(BaseModel):
+    @field_validator("roll_number")
+    @classmethod
+    def validate_roll_number(cls, value: str) -> str:
+        return _validate_roll_number(value)
+
+    @field_validator("hostel_type")
+    @classmethod
+    def validate_hostel_type(cls, value: str) -> str:
+        return _normalize_hostel_type(value)
+
+    @field_validator("otp_code")
+    @classmethod
+    def validate_otp_code(cls, value: str) -> str:
+        return _validate_otp(value)
+
+    @field_validator("new_password")
+    @classmethod
+    def validate_new_password(cls, value: str) -> str:
+        return _validate_password(value)
+
+
+class ChangePasswordRequest(SanitizedRequestModel):
     current_password: str
     new_password: str
 
+    @field_validator("current_password", "new_password")
+    @classmethod
+    def validate_passwords(cls, value: str) -> str:
+        return _validate_password(value)
+
+
 # ============= QR Code Pickup Models =============
 
-class GenerateQRRequest(BaseModel):
+class GenerateQRRequest(SanitizedRequestModel):
     """Guard requests a one-time QR pickup token for a PENDING parcel."""
     parcel_id: str
 
-class GenerateDelegationRequest(BaseModel):
+    @field_validator("parcel_id")
+    @classmethod
+    def validate_parcel_id(cls, value: str) -> str:
+        return _validate_object_id_string(value, "parcel ID")
+
+
+class GenerateDelegationRequest(SanitizedRequestModel):
     """Student generates a delegation code for a friend."""
     parcel_id: str
 
-class VerifyQRRequest(BaseModel):
+    @field_validator("parcel_id")
+    @classmethod
+    def validate_parcel_id(cls, value: str) -> str:
+        return _validate_object_id_string(value, "parcel ID")
+
+
+class VerifyQRRequest(SanitizedRequestModel):
     """Student submits scanned QR payload to verify and collect their parcel."""
     parcel_id: str
     token: str
     delegation_code: Optional[str] = None
+
+    @field_validator("parcel_id")
+    @classmethod
+    def validate_parcel_id(cls, value: str) -> str:
+        return _validate_object_id_string(value, "parcel ID")
+
+    @field_validator("token")
+    @classmethod
+    def validate_token(cls, value: str) -> str:
+        return _validate_qr_token(value)
+
+    @field_validator("delegation_code")
+    @classmethod
+    def validate_delegation_code(cls, value: Optional[str]) -> Optional[str]:
+        if value is None:
+            return None
+        normalized = value.strip().upper()
+        if normalized == "":
+            return None
+        if not DELEGATION_CODE_PATTERN.fullmatch(normalized):
+            raise ValueError("Delegation code must be exactly 6 alphanumeric characters")
+        return normalized
 
 # Response Models
 class TokenResponse(BaseModel):
@@ -306,7 +827,7 @@ def verify_token(token: str) -> dict:
         return payload
     except jwt.ExpiredSignatureError:
         raise HTTPException(status_code=401, detail="Token has expired")
-    except jwt.JWTError:
+    except jwt.PyJWTError:
         raise HTTPException(status_code=401, detail="Invalid token")
 
 async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security)):
@@ -330,17 +851,32 @@ def require_admin(user: dict):
         raise HTTPException(status_code=403, detail="Only admins can access this endpoint")
 
 def validate_hostel_type(hostel_type: str):
-    if hostel_type not in [HostelType.BOYS, HostelType.GIRLS]:
-        raise HTTPException(status_code=400, detail="Invalid hostel type")
+    try:
+        return _normalize_hostel_type(hostel_type)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+def validate_parcel_status(parcel_status: str):
+    try:
+        return _normalize_status(parcel_status)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 def parse_object_id(raw_id: str, field_name: str) -> ObjectId:
+    if not isinstance(raw_id, str):
+        raise HTTPException(status_code=400, detail=f"Invalid {field_name} format")
+    cleaned = raw_id.strip()
+    if len(cleaned) > 64:
+        raise HTTPException(status_code=400, detail=f"Invalid {field_name} format")
+    if not OBJECT_ID_PATTERN.fullmatch(cleaned):
+        raise HTTPException(status_code=400, detail=f"Invalid {field_name} format")
     try:
-        return ObjectId(raw_id)
+        return ObjectId(cleaned)
     except (InvalidId, TypeError):
         raise HTTPException(status_code=400, detail=f"Invalid {field_name} format")
 
 def generate_otp() -> str:
-    return ''.join(random.choices(string.digits, k=6))
+    return ''.join(secrets.choice(string.digits) for _ in range(6))
 
 class InMemoryRateLimiter:
     """Simple in-memory sliding-window rate limiter with periodic cleanup."""
@@ -396,7 +932,7 @@ auth_rate_limiter = InMemoryRateLimiter(
 
 async def enforce_auth_rate_limit(request: Request):
     forwarded_for = request.headers.get("x-forwarded-for", "")
-    if forwarded_for:
+    if TRUST_PROXY_HEADERS and forwarded_for:
         client_ip = forwarded_for.split(",")[0].strip()
     else:
         client_ip = request.client.host if request.client else "unknown"
@@ -416,7 +952,7 @@ def build_status_event(
 ) -> Dict[str, Any]:
     event_doc: Dict[str, Any] = {
         "event": event,
-        "timestamp": timestamp or datetime.utcnow(),
+        "timestamp": timestamp or datetime.utcnow() + timedelta(hours=5, minutes=30),
     }
     if actor:
         if actor.get("_id"):
@@ -456,7 +992,7 @@ def ensure_status_history(parcel: Dict[str, Any]) -> List[Dict[str, Any]]:
                     timestamp = parcel.get("assigned_at") or parcel.get("updated_at")
                 else:
                     timestamp = parcel.get("created_at")
-                event_doc["timestamp"] = timestamp or datetime.utcnow()
+                event_doc["timestamp"] = timestamp or datetime.utcnow() + timedelta(hours=5, minutes=30)
             normalized.append(event_doc)
 
     if not normalized:
@@ -786,11 +1322,11 @@ async def root():
 @api_router.post("/auth/guard/login", response_model=TokenResponse)
 async def guard_login(request: GuardLoginRequest, _: None = Depends(enforce_auth_rate_limit)):
     """Guard login with username and password"""
-    validate_hostel_type(request.hostel_type)
+    hostel_type = validate_hostel_type(request.hostel_type)
     user = await db.users.find_one({
         "username": request.username,
         "role": UserRole.GUARD,
-        "hostel_type": request.hostel_type
+        "hostel_type": hostel_type
     })
     
     if not user:
@@ -802,7 +1338,7 @@ async def guard_login(request: GuardLoginRequest, _: None = Depends(enforce_auth
     token = create_access_token({
         "user_id": str(user["_id"]),
         "role": user["role"],
-        "hostel_type": user["hostel_type"]
+        "hostel_type": hostel_type
     })
     
     user["_id"] = str(user["_id"])
@@ -843,12 +1379,12 @@ async def admin_login(request: AdminLoginRequest, _: None = Depends(enforce_auth
 @api_router.post("/auth/student/login", response_model=TokenResponse)
 async def student_login(request: StudentLoginRequest, _: None = Depends(enforce_auth_rate_limit)):
     """Student login with roll number and password"""
-    validate_hostel_type(request.hostel_type)
+    hostel_type = validate_hostel_type(request.hostel_type)
     
     user = await db.users.find_one({
         "roll_number": request.roll_number,
         "role": UserRole.STUDENT,
-        "hostel_type": request.hostel_type
+        "hostel_type": hostel_type
     })
     
     if not user or not user.get("password") or not verify_password(request.password, user["password"]):
@@ -862,7 +1398,7 @@ async def student_login(request: StudentLoginRequest, _: None = Depends(enforce_
     token = create_access_token({
         "user_id": str(user["_id"]),
         "role": user["role"],
-        "hostel_type": user["hostel_type"]
+        "hostel_type": hostel_type
     })
     
     user["_id"] = str(user["_id"])
@@ -875,7 +1411,10 @@ async def student_login(request: StudentLoginRequest, _: None = Depends(enforce_
     }
 
 @api_router.post("/auth/student/register/request-otp")
-async def student_register_request_otp(request: StudentRegisterRequest):
+async def student_register_request_otp(
+    request: StudentRegisterRequest,
+    _: None = Depends(enforce_auth_rate_limit),
+):
     """Request OTP for student self-registration"""
     validate_hostel_type(request.hostel_type)
     existing = await db.users.find_one({
@@ -885,7 +1424,8 @@ async def student_register_request_otp(request: StudentRegisterRequest):
         ]
     })
     if existing:
-        raise HTTPException(status_code=400, detail="Student already registered. Please login.")
+        # Do not leak account existence
+        return {"message": "If the details are valid, a registration OTP has been sent", "email": request.email}
 
     await db.otps.update_many({
         "email": request.email,
@@ -905,12 +1445,15 @@ async def student_register_request_otp(request: StudentRegisterRequest):
     }
     await db.otps.insert_one(otp_doc)
     await send_email_otp(request.email, otp_code)
-    return {"message": "Registration OTP sent to your email", "email": request.email}
+    return {"message": "If the details are valid, a registration OTP has been sent", "email": request.email}
 
 @api_router.post("/auth/student/register/verify-otp", response_model=TokenResponse)
-async def student_register_verify_otp(request: StudentRegisterVerify):
+async def student_register_verify_otp(
+    request: StudentRegisterVerify,
+    _: None = Depends(enforce_auth_rate_limit),
+):
     """Verify OTP and create a new student account"""
-    validate_hostel_type(request.hostel_type)
+    hostel_type = validate_hostel_type(request.hostel_type)
     existing = await db.users.find_one({
         "$or": [
             {"roll_number": request.roll_number, "role": UserRole.STUDENT},
@@ -918,7 +1461,7 @@ async def student_register_verify_otp(request: StudentRegisterVerify):
         ]
     })
     if existing:
-        raise HTTPException(status_code=400, detail="Student already registered. Please login.")
+        raise HTTPException(status_code=400, detail="Registration could not be completed")
 
     otp = await db.otps.find_one({
         "email": request.email,
@@ -939,15 +1482,15 @@ async def student_register_verify_otp(request: StudentRegisterVerify):
     student_doc = {
         "name": request.name.strip(),
         "role": UserRole.STUDENT,
-        "hostel_type": request.hostel_type,
-        "roll_number": request.roll_number.strip(),
+        "hostel_type": hostel_type,
+        "roll_number": request.roll_number,
         "email": request.email,
         "password": hash_password(request.password),
-        "room_number": request.room_number.strip(),
+        "room_number": request.room_number,
         "created_at": datetime.utcnow()
     }
-    if request.contact_number and request.contact_number.strip():
-        student_doc["contact_number"] = request.contact_number.strip()
+    if request.contact_number:
+        student_doc["contact_number"] = request.contact_number
 
     result = await db.users.insert_one(student_doc)
     student_doc["_id"] = str(result.inserted_id)
@@ -986,14 +1529,15 @@ async def update_expo_token(request: UpdateExpoTokenRequest, current_user: dict 
 @api_router.post("/auth/student/forgot-password/request-otp")
 async def student_forgot_password_request_otp(request: ForgotPasswordRequest, _: None = Depends(enforce_auth_rate_limit)):
     """Send OTP to student email for password reset"""
-    validate_hostel_type(request.hostel_type)
+    hostel_type = validate_hostel_type(request.hostel_type)
     student = await db.users.find_one({
         "roll_number": request.roll_number,
         "role": UserRole.STUDENT,
-        "hostel_type": request.hostel_type
+        "hostel_type": hostel_type
     })
     if not student or not student.get("email"):
-        raise HTTPException(status_code=404, detail="No student found with this roll number in the selected hostel")
+        # Do not leak account existence
+        return {"message": "If an account exists, a password reset OTP has been sent"}
 
     # Invalidate previous unused password-reset OTPs
     await db.otps.update_many({
@@ -1014,19 +1558,19 @@ async def student_forgot_password_request_otp(request: ForgotPasswordRequest, _:
     }
     await db.otps.insert_one(otp_doc)
     await send_email_otp(student["email"], otp_code)
-    return {"message": "Password reset OTP sent to your registered email", "email": mask_email(student["email"])}
+    return {"message": "If an account exists, a password reset OTP has been sent", "email": mask_email(student["email"])}
 
 @api_router.post("/auth/student/forgot-password/verify-otp")
 async def student_forgot_password_verify_otp(request: ResetPasswordVerify, _: None = Depends(enforce_auth_rate_limit)):
     """Verify OTP and reset student password"""
-    validate_hostel_type(request.hostel_type)
+    hostel_type = validate_hostel_type(request.hostel_type)
     student = await db.users.find_one({
         "roll_number": request.roll_number,
         "role": UserRole.STUDENT,
-        "hostel_type": request.hostel_type
+        "hostel_type": hostel_type
     })
     if not student or not student.get("email"):
-        raise HTTPException(status_code=404, detail="Student not found")
+        raise HTTPException(status_code=401, detail="Invalid OTP")
 
     otp = await db.otps.find_one({
         "email": student["email"],
@@ -1071,8 +1615,8 @@ async def student_change_password(
     if not student.get("password") or not verify_password(request.current_password, student["password"]):
         raise HTTPException(status_code=401, detail="Current password is incorrect")
 
-    if len(request.new_password) < 4:
-        raise HTTPException(status_code=400, detail="New password must be at least 4 characters")
+    if len(request.new_password) < MIN_PASSWORD_LENGTH:
+        raise HTTPException(status_code=400, detail=f"New password must be at least {MIN_PASSWORD_LENGTH} characters")
 
     new_hashed = hash_password(request.new_password)
     await db.users.update_one(
@@ -1106,12 +1650,12 @@ async def add_user(request: AddUserRequest, current_user: dict = Depends(get_cur
         raise HTTPException(status_code=400, detail="Invalid role")
     
     # Validate hostel type
-    validate_hostel_type(request.hostel_type)
+    hostel_type = validate_hostel_type(request.hostel_type)
     
     user_data = {
         "name": request.name,
         "role": request.role,
-        "hostel_type": request.hostel_type,
+        "hostel_type": hostel_type,
         "created_at": datetime.utcnow()
     }
     
@@ -1189,13 +1733,15 @@ async def get_delivered_auto_delete_status(current_user: dict = Depends(get_curr
     return await get_auto_delete_status()
 
 @api_router.delete("/admin/parcels/delivered")
-async def delete_delivered_parcels(hostel_type: Optional[str] = None, current_user: dict = Depends(get_current_user)):
+async def delete_delivered_parcels(
+    hostel_type: Optional[str] = ApiQuery(default=None, max_length=16),
+    current_user: dict = Depends(get_current_user),
+):
     """Delete delivered parcels (optionally scoped to a hostel type)"""
     require_admin(current_user)
     query = {"status": ParcelStatus.DELIVERED}
     if hostel_type:
-        validate_hostel_type(hostel_type)
-        query["hostel_type"] = hostel_type
+        query["hostel_type"] = validate_hostel_type(hostel_type)
 
     deleted_count = await delete_delivered_parcels_by_query(query)
     return {
@@ -1210,8 +1756,8 @@ async def add_parcel(request: AddParcelRequest, background_tasks: BackgroundTask
     """Guard adds a new parcel"""
     if current_user["role"] != UserRole.GUARD:
         raise HTTPException(status_code=403, detail="Only guards can add parcels")
-    validate_hostel_type(request.hostel_type)
-    if request.hostel_type != current_user["hostel_type"]:
+    request_hostel_type = validate_hostel_type(request.hostel_type)
+    if request_hostel_type != current_user["hostel_type"]:
         raise HTTPException(status_code=403, detail="Guards can only add parcels for their own hostel")
     
     created_at = datetime.utcnow()
@@ -1309,8 +1855,8 @@ async def assign_parcel(request: AssignParcelRequest, current_user: dict = Depen
     """Guard assigns unassigned parcel to a student"""
     if current_user["role"] != UserRole.GUARD:
         raise HTTPException(status_code=403, detail="Only guards can assign parcels")
-    validate_hostel_type(request.hostel_type)
-    if request.hostel_type != current_user["hostel_type"]:
+    request_hostel_type = validate_hostel_type(request.hostel_type)
+    if request_hostel_type != current_user["hostel_type"]:
         raise HTTPException(status_code=403, detail="Guards can only assign parcels within their own hostel")
     parcel_object_id = parse_object_id(request.parcel_id, "parcel ID")
     parcel = await db.parcels.find_one({"_id": parcel_object_id})
@@ -1650,7 +2196,7 @@ async def generate_delegation(request: GenerateDelegationRequest, current_user: 
     if parcel.get("student_id") != current_user["_id"]:
         raise HTTPException(status_code=403, detail="This parcel belongs to a different student")
         
-    delegation_code = "".join(random.choices(string.ascii_uppercase + string.digits, k=6))
+    delegation_code = "".join(secrets.choice(string.ascii_uppercase + string.digits) for _ in range(6))
     expiry_time = datetime.utcnow() + timedelta(minutes=10)
     
     await db.parcels.update_one(
@@ -1683,7 +2229,7 @@ async def verify_parcel_qr(request: VerifyQRRequest, current_user: dict = Depend
         
     # Security: Ensure this student owns the parcel, OR provided a valid delegation code
     if parcel.get("student_id") != current_user["_id"]:
-        if not request.delegation_code or parcel.get("delegation_code") != request.delegation_code.upper():
+        if not request.delegation_code or parcel.get("delegation_code") != request.delegation_code:
             raise HTTPException(status_code=403, detail="This parcel belongs to a different student")
         delegation_expiry = parcel.get("delegation_expiry")
         if not delegation_expiry or delegation_expiry < datetime.utcnow():
@@ -1724,9 +2270,13 @@ async def verify_parcel_qr(request: VerifyQRRequest, current_user: dict = Depend
     return {"message": "Parcel claimed successfully via QR code!"}
 
 @api_router.get("/parcel/hostel/{hostel_type}")
-async def get_hostel_parcels(hostel_type: str, status: Optional[str] = None, current_user: dict = Depends(get_current_user)):
+async def get_hostel_parcels(
+    hostel_type: str = ApiPath(..., min_length=4, max_length=8),
+    status: Optional[str] = ApiQuery(default=None, max_length=16),
+    current_user: dict = Depends(get_current_user),
+):
     """Get parcels for a specific hostel"""
-    validate_hostel_type(hostel_type)
+    hostel_type = validate_hostel_type(hostel_type)
     if current_user["role"] == UserRole.ADMIN:
         scoped_hostel = hostel_type
     elif current_user["role"] in [UserRole.GUARD, UserRole.STUDENT]:
@@ -1739,9 +2289,24 @@ async def get_hostel_parcels(hostel_type: str, status: Optional[str] = None, cur
     query = {"hostel_type": scoped_hostel}
     
     if current_user["role"] == UserRole.STUDENT:
-        query["status"] = {"$in": [ParcelStatus.PENDING, ParcelStatus.UNASSIGNED]}
+        student_scope: List[Dict[str, Any]] = [{"student_id": current_user["_id"]}]
+        student_room = (current_user.get("room_number") or "").strip()
+        if student_room:
+            student_scope.append(
+                {
+                    "$and": [
+                        {"status": ParcelStatus.UNASSIGNED},
+                        {"room_number": student_room},
+                    ]
+                }
+            )
+        query["$or"] = student_scope
+        if status:
+            query["status"] = validate_parcel_status(status)
+        else:
+            query["status"] = {"$in": [ParcelStatus.PENDING, ParcelStatus.UNASSIGNED]}
     elif status:
-        query["status"] = status
+        query["status"] = validate_parcel_status(status)
     
     parcels = await db.parcels.find(query).sort("created_at", -1).to_list(1000)
 
@@ -1795,7 +2360,10 @@ async def get_delivered_parcels(current_user: dict = Depends(get_current_user)):
     return {"parcels": parcels}
 
 @api_router.get("/student/{student_id}")
-async def get_student_details(student_id: str, current_user: dict = Depends(get_current_user)):
+async def get_student_details(
+    student_id: str = ApiPath(..., min_length=24, max_length=24),
+    current_user: dict = Depends(get_current_user),
+):
     """Get student details by ID"""
     if current_user["role"] != UserRole.GUARD:
         raise HTTPException(status_code=403, detail="Only guards can access this endpoint")

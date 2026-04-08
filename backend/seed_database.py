@@ -3,20 +3,29 @@ Database Seed Script
 Run this to add initial users for testing
 
 Users to add:
-1. Boys Hostel Guard: username=boys_guard, password=guard123
-2. Girls Hostel Guard: username=girls_guard, password=guard123
+1. Boys Hostel Guard: username=boys_guard
+2. Girls Hostel Guard: username=girls_guard
 3. Sample Students for both hostels
 """
 
 import requests
 import json
+import os
+from pathlib import Path
+from dotenv import load_dotenv
 
-BASE_URL = "http://localhost:8001/api"
+load_dotenv(Path(__file__).resolve().parent / ".env")
+
+BASE_URL = os.environ.get("API_BASE_URL", "http://localhost:8001/api")
+SEED_GUARD_PASSWORD = os.environ.get("SEED_GUARD_PASSWORD")
 
 def add_users():
     print("=" * 60)
     print("Adding Initial Users to Database")
     print("=" * 60)
+
+    if not SEED_GUARD_PASSWORD:
+        raise RuntimeError("SEED_GUARD_PASSWORD must be set before running seed_database.py")
     
     users = [
         # Guards
@@ -25,14 +34,14 @@ def add_users():
             "role": "GUARD",
             "hostel_type": "BOYS",
             "username": "boys_guard",
-            "password": "guard123"
+            "password": SEED_GUARD_PASSWORD
         },
         {
             "name": "Girls Hostel Guard",
             "role": "GUARD",
             "hostel_type": "GIRLS",
             "username": "girls_guard",
-            "password": "guard123"
+            "password": SEED_GUARD_PASSWORD
         },
         # Boys Hostel Students
         {
@@ -109,8 +118,8 @@ def add_users():
     print("=" * 60)
     print("\n📋 Login Credentials:")
     print("\nGuards:")
-    print("  Boys Hostel: username=boys_guard, password=guard123")
-    print("  Girls Hostel: username=girls_guard, password=guard123")
+    print("  Boys Hostel: username=boys_guard, password=<SEED_GUARD_PASSWORD>")
+    print("  Girls Hostel: username=girls_guard, password=<SEED_GUARD_PASSWORD>")
     print("\nStudents (use roll number + email, then OTP):")
     print("  Example: roll=2021001, email=rahul.kumar@iiitg.ac.in")
     print("=" * 60)

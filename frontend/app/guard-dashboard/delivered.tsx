@@ -18,6 +18,7 @@ import api from '../../utils/api';
 import { Colors, GlassCard, GlassInput } from '../../utils/theme';
 import AnimatedCard, { STACK_CARD_SPACING, STACK_FOCUS_OFFSET } from '../../components/AnimatedCard';
 import ParcelTimeline from '../../components/ParcelTimeline';
+import { extractErrorMessage } from '../../utils/errorMessage';
 
 interface Parcel {
   _id: string;
@@ -134,7 +135,7 @@ export default function DeliveredParcels() {
       setSelectedStudent(response.data.student);
     } catch (error: any) {
       console.error('Error fetching student details:', error?.response?.status, error?.response?.data || error?.message);
-      setErrorMessage(error?.response?.data?.detail || 'Failed to fetch student details');
+      setErrorMessage(extractErrorMessage(error, 'Failed to fetch student details'));
     } finally {
       setLoadingStudent(false);
     }

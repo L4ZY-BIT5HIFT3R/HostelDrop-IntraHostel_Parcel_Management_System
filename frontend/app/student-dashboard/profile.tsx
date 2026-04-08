@@ -19,6 +19,7 @@ import api from '../../utils/api';
 import { useAuthStore } from '../../store/authStore';
 import { Colors, GlassCard, GlassInput } from '../../utils/theme';
 import ErrorPopup from '../../components/ErrorPopup';
+import { extractErrorMessage } from '../../utils/errorMessage';
 
 interface StudentProfile {
   _id: string;
@@ -76,8 +77,8 @@ export default function Profile() {
       setErrorVisible(true);
       return;
     }
-    if (!newPassword.trim() || newPassword.length < 4) {
-      setErrorMessage('New password must be at least 4 characters');
+    if (!newPassword.trim() || newPassword.length < 8) {
+      setErrorMessage('New password must be at least 8 characters');
       setErrorVisible(true);
       return;
     }
@@ -99,7 +100,7 @@ export default function Profile() {
       setNewPassword('');
       setConfirmPassword('');
     } catch (error: any) {
-      setErrorMessage(error.response?.data?.detail || 'Failed to change password.');
+      setErrorMessage(extractErrorMessage(error, 'Failed to change password.'));
       setErrorVisible(true);
     } finally {
       setChangePwLoading(false);
@@ -124,9 +125,13 @@ export default function Profile() {
       });
       setFpOtpSent(true);
       setFpMaskedEmail(response.data.email || '');
-      Alert.alert('OTP Sent', `A password reset OTP has been sent to ${response.data.email}`);
+      if (response.data.email) {
+        Alert.alert('OTP Sent', `A password reset OTP has been sent to ${response.data.email}`);
+      } else {
+        Alert.alert('OTP Sent', 'If an account exists, a password reset OTP has been sent.');
+      }
     } catch (error: any) {
-      setErrorMessage(error.response?.data?.detail || 'Failed to send OTP.');
+      setErrorMessage(extractErrorMessage(error, 'Failed to send OTP.'));
       setErrorVisible(true);
       setShowForgotModal(false);
     } finally {
@@ -141,8 +146,8 @@ export default function Profile() {
       setErrorVisible(true);
       return;
     }
-    if (!fpNewPassword.trim() || fpNewPassword.length < 4) {
-      setErrorMessage('New password must be at least 4 characters');
+    if (!fpNewPassword.trim() || fpNewPassword.length < 8) {
+      setErrorMessage('New password must be at least 8 characters');
       setErrorVisible(true);
       return;
     }
@@ -158,7 +163,7 @@ export default function Profile() {
       setShowForgotModal(false);
       setShowChangePassword(false);
     } catch (error: any) {
-      setErrorMessage(error.response?.data?.detail || 'Failed to reset password.');
+      setErrorMessage(extractErrorMessage(error, 'Failed to reset password.'));
       setErrorVisible(true);
     } finally {
       setFpLoading(false);
@@ -174,9 +179,13 @@ export default function Profile() {
         hostel_type: profile.hostel_type,
       });
       setFpMaskedEmail(response.data.email || '');
-      Alert.alert('OTP Resent', `A new OTP has been sent to ${response.data.email}`);
+      if (response.data.email) {
+        Alert.alert('OTP Resent', `A new OTP has been sent to ${response.data.email}`);
+      } else {
+        Alert.alert('OTP Resent', 'If an account exists, a new OTP has been sent.');
+      }
     } catch (error: any) {
-      setErrorMessage(error.response?.data?.detail || 'Failed to resend OTP.');
+      setErrorMessage(extractErrorMessage(error, 'Failed to resend OTP.'));
       setErrorVisible(true);
     } finally {
       setFpLoading(false);

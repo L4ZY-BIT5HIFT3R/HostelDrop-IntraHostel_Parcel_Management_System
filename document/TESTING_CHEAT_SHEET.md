@@ -19,14 +19,14 @@
 #### Boys Hostel Guard
 ```
 Username: boys_guard
-Password: guard123
+Password: <SEED_GUARD_PASSWORD>
 Hostel: Boys
 ```
 
 #### Girls Hostel Guard
 ```
 Username: girls_guard
-Password: guard123
+Password: <SEED_GUARD_PASSWORD>
 Hostel: Girls
 ```
 
@@ -111,7 +111,7 @@ Room: 203
 1. Open app → Select **"Guard"** → Select **"Boys Hostel"**
 2. Login:
    - Username: `boys_guard`
-   - Password: `guard123`
+   - Password: `<SEED_GUARD_PASSWORD>`
 3. ✅ You should see **5 parcels** (3 PENDING + 2 UNASSIGNED)
 
 ### ✅ Test 2: Send OTP & Deliver Parcel
@@ -221,7 +221,7 @@ curl http://localhost:8001/api/admin/users
 ```bash
 curl -X POST http://localhost:8001/api/auth/guard/login \
   -H "Content-Type: application/json" \
-  -d '{"username":"boys_guard","password":"guard123","hostel_type":"BOYS"}'
+  -d '{"username":"boys_guard","password":"<SEED_GUARD_PASSWORD>","hostel_type":"BOYS"}'
 ```
 
 ### Reseed database (if needed):
@@ -313,3 +313,4 @@ curl -s http://localhost:8001/api/admin/users | python3 -m json.tool
 ✅ Documentation complete
 
 **Start testing now! 🚀**
+

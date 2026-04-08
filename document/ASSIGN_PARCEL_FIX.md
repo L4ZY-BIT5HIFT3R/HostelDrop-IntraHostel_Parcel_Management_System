@@ -45,7 +45,7 @@
 ## 🧪 How to Test
 
 ### Test 1: Assign Parcel (Success Case)
-1. Login as guard (boys_guard / guard123)
+1. Login as guard (boys_guard / <SEED_GUARD_PASSWORD>)
 2. Find an UNASSIGNED parcel (yellow badge)
 3. Click **"Assign"** button
 4. Enter:
@@ -225,3 +225,4 @@ The backend now validates in this order:
 - Console logs: ✅ For debugging
 
 **The assign parcel function is now fully operational!**
+

@@ -1,15 +1,18 @@
 import asyncio
 from motor.motor_asyncio import AsyncIOMotorClient
 import os
+from pathlib import Path
 import jwt
 from datetime import datetime, timedelta
 import requests
 from dotenv import load_dotenv
 
-load_dotenv(r"backend\.env")
+load_dotenv(Path(__file__).resolve().parent / "backend/.env")
 
 # Settings from server.py
-SECRET_KEY = os.environ.get('JWT_SECRET_KEY') or 'dev-insecure-secret-change-me'
+SECRET_KEY = os.environ.get('JWT_SECRET_KEY')
+if not SECRET_KEY:
+    raise RuntimeError("JWT_SECRET_KEY must be set to run test_qr_direct.py")
 ALGORITHM = "HS256"
 
 def create_access_token(data: dict) -> str:

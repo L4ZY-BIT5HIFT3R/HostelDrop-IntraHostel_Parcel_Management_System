@@ -1,17 +1,22 @@
 import asyncio
 import os
+from pathlib import Path
 from motor.motor_asyncio import AsyncIOMotorClient
 import requests
 from dotenv import load_dotenv
 
-load_dotenv(r"backend\.env")
+load_dotenv(Path(__file__).resolve().parent / "backend/.env")
 
 API_URL = "http://localhost:8001/api"
 TEST_EMAIL = "test.pw123@iiitg.ac.in"
 TEST_ROLL = "TT9999"
-TEST_PASS = "SecretPass123!"
+TEST_PASS = os.environ.get("TEST_STUDENT_PASSWORD")
+WRONG_TEST_PASS = os.environ.get("TEST_STUDENT_WRONG_PASSWORD", "__definitely_invalid_password__")
 
 async def verify():
+    if not TEST_PASS:
+        raise RuntimeError("TEST_STUDENT_PASSWORD must be set to run test_student_password.py")
+
     mongo_url = os.environ.get('MONGO_URL', "mongodb://localhost:27017")
     client = AsyncIOMotorClient(mongo_url)
     db = client[os.environ.get('DB_NAME', 'hosteldrop')]
@@ -70,7 +75,7 @@ async def verify():
     print("\n7. Testing Login with WRONG Password...")
     r4 = requests.post(f"{API_URL}/auth/student/login", json={
         "roll_number": TEST_ROLL,
-        "password": "WrongPassword456!",
+        "password": WRONG_TEST_PASS,
         "hostel_type": "BOYS"
     })
     print(r4.status_code, r4.text)
