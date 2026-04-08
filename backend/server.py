@@ -168,6 +168,12 @@ class ParcelStatus:
     UNASSIGNED = "UNASSIGNED"
     DELIVERED = "DELIVERED"
 
+
+class RoomAssignmentStatus:
+    ACTIVE = "ACTIVE"
+    TRANSFERRED = "TRANSFERRED"
+    LEFT_HOSTEL = "LEFT_HOSTEL"
+
 class ParcelTimelineEvent:
     LOGGED = "LOGGED"
     ASSIGNED = "ASSIGNED"
@@ -270,6 +276,13 @@ def _validate_description(value: str) -> str:
     _reject_control_chars(cleaned, "description")
     if len(cleaned) > 300:
         raise ValueError("Description cannot exceed 300 characters")
+    return cleaned
+
+
+def _validate_reason(value: str) -> str:
+    cleaned = _validate_description(value)
+    if not cleaned:
+        raise ValueError("Reason is required")
     return cleaned
 
 
@@ -504,6 +517,54 @@ class AddUserRequest(SanitizedRequestModel):
         if self.role == UserRole.STUDENT and (not self.roll_number or not self.email or not self.room_number):
             raise ValueError("Roll number, email, and room number required for students")
         return self
+
+
+class TransferStudentRoomRequest(SanitizedRequestModel):
+    roll_number: str
+    hostel_type: str
+    new_room_number: str
+    reason: str
+
+    @field_validator("roll_number")
+    @classmethod
+    def validate_roll_number(cls, value: str) -> str:
+        return _validate_roll_number(value)
+
+    @field_validator("hostel_type")
+    @classmethod
+    def validate_hostel_type(cls, value: str) -> str:
+        return _normalize_hostel_type(value)
+
+    @field_validator("new_room_number")
+    @classmethod
+    def validate_new_room_number(cls, value: str) -> str:
+        return _validate_room_number(value)
+
+    @field_validator("reason")
+    @classmethod
+    def validate_reason(cls, value: str) -> str:
+        return _validate_reason(value)
+
+
+class DeactivateStudentRequest(SanitizedRequestModel):
+    roll_number: str
+    hostel_type: str
+    reason: str
+
+    @field_validator("roll_number")
+    @classmethod
+    def validate_roll_number(cls, value: str) -> str:
+        return _validate_roll_number(value)
+
+    @field_validator("hostel_type")
+    @classmethod
+    def validate_hostel_type(cls, value: str) -> str:
+        return _normalize_hostel_type(value)
+
+    @field_validator("reason")
+    @classmethod
+    def validate_reason(cls, value: str) -> str:
+        return _validate_reason(value)
 
 
 class AddParcelRequest(SanitizedRequestModel):
@@ -843,12 +904,19 @@ async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(s
     user = await db.users.find_one({"_id": user_object_id})
     if not user:
         raise HTTPException(status_code=401, detail="User not found")
+    require_active_account(user)
     user["_id"] = str(user["_id"])
     return user
 
 def require_admin(user: dict):
     if user.get("role") != UserRole.ADMIN:
         raise HTTPException(status_code=403, detail="Only admins can access this endpoint")
+
+
+def require_active_account(user: dict):
+    if user.get("is_active") is False:
+        raise HTTPException(status_code=401, detail="Account is inactive")
+
 
 def validate_hostel_type(hostel_type: str):
     try:
@@ -877,6 +945,99 @@ def parse_object_id(raw_id: str, field_name: str) -> ObjectId:
 
 def generate_otp() -> str:
     return ''.join(secrets.choice(string.digits) for _ in range(6))
+
+
+def build_delegated_receiver_info(user: dict) -> Dict[str, Any]:
+    return {
+        "student_id": str(user.get("_id", "")),
+        "name": user.get("name"),
+        "roll_number": user.get("roll_number"),
+        "email": user.get("email"),
+        "room_number": user.get("room_number"),
+        "hostel_type": user.get("hostel_type"),
+    }
+
+
+def build_room_assignment_doc(
+    student: Dict[str, Any],
+    room_number: str,
+    status: str,
+    reason: str,
+    actor: Optional[dict],
+    started_at: Optional[datetime] = None,
+    ended_at: Optional[datetime] = None,
+) -> Dict[str, Any]:
+    now = datetime.utcnow()
+    student_id = str(student["_id"])
+    doc: Dict[str, Any] = {
+        "student_id": student_id,
+        "roll_number": student.get("roll_number"),
+        "student_name": student.get("name"),
+        "hostel_type": student.get("hostel_type"),
+        "room_number": room_number,
+        "status": status,
+        "reason": reason,
+        "is_active": status == RoomAssignmentStatus.ACTIVE,
+        "created_at": now,
+        "updated_at": now,
+        "start_at": started_at or now,
+        "end_at": ended_at,
+    }
+    if actor and actor.get("_id"):
+        doc["changed_by_user_id"] = str(actor["_id"])
+        doc["changed_by_role"] = actor.get("role")
+    return doc
+
+
+async def close_active_room_assignment(
+    student_id: str,
+    status: str,
+    reason: str,
+    actor: Optional[dict],
+    ended_at: datetime,
+) -> int:
+    update_fields: Dict[str, Any] = {
+        "is_active": False,
+        "status": status,
+        "reason": reason,
+        "end_at": ended_at,
+        "updated_at": ended_at,
+    }
+    if actor and actor.get("_id"):
+        update_fields["changed_by_user_id"] = str(actor["_id"])
+        update_fields["changed_by_role"] = actor.get("role")
+
+    result = await db.room_assignments.update_many(
+        {"student_id": student_id, "is_active": True},
+        {"$set": update_fields},
+    )
+    return result.modified_count
+
+
+async def seed_student_room_assignment(
+    student: Dict[str, Any],
+    actor: Optional[dict],
+    reason: str,
+) -> None:
+    room_number = (student.get("room_number") or "").strip()
+    if not room_number:
+        return
+
+    student_id = str(student["_id"])
+    existing = await db.room_assignments.find_one(
+        {"student_id": student_id, "is_active": True}
+    )
+    if existing:
+        return
+
+    assignment_doc = build_room_assignment_doc(
+        student=student,
+        room_number=room_number,
+        status=RoomAssignmentStatus.ACTIVE,
+        reason=reason,
+        actor=actor,
+    )
+    await db.room_assignments.insert_one(assignment_doc)
 
 class InMemoryRateLimiter:
     """Simple in-memory sliding-window rate limiter with periodic cleanup."""
@@ -1191,12 +1352,14 @@ HostelDrop - Hostel Parcel Management System"""
 async def ensure_admin_user():
     existing = await db.users.find_one({"role": UserRole.ADMIN, "email": ADMIN_EMAIL})
     if existing:
+        update_fields: Dict[str, Any] = {}
         current_hash = existing.get("password")
         if not current_hash or not verify_password(ADMIN_PASSWORD, current_hash):
-            await db.users.update_one(
-                {"_id": existing["_id"]},
-                {"$set": {"password": hash_password(ADMIN_PASSWORD)}}
-            )
+            update_fields["password"] = hash_password(ADMIN_PASSWORD)
+        if existing.get("is_active") is False:
+            update_fields["is_active"] = True
+        if update_fields:
+            await db.users.update_one({"_id": existing["_id"]}, {"$set": update_fields})
             logger.info("Admin password updated from environment for %s", ADMIN_EMAIL)
         return
 
@@ -1206,6 +1369,7 @@ async def ensure_admin_user():
         "hostel_type": HostelType.BOYS,
         "email": ADMIN_EMAIL,
         "password": hash_password(ADMIN_PASSWORD),
+        "is_active": True,
         "created_at": datetime.utcnow(),
     }
     await db.users.insert_one(admin_user)
@@ -1331,6 +1495,8 @@ async def guard_login(request: GuardLoginRequest, _: None = Depends(enforce_auth
     
     if not user:
         raise HTTPException(status_code=401, detail="Invalid credentials")
+    if user.get("is_active") is False:
+        raise HTTPException(status_code=401, detail="Invalid credentials")
     
     if not verify_password(request.password, user["password"]):
         raise HTTPException(status_code=401, detail="Invalid credentials")
@@ -1360,6 +1526,8 @@ async def admin_login(request: AdminLoginRequest, _: None = Depends(enforce_auth
 
     if not user or not user.get("password") or not verify_password(request.password, user["password"]):
         raise HTTPException(status_code=401, detail="Invalid credentials")
+    if user.get("is_active") is False:
+        raise HTTPException(status_code=401, detail="Invalid credentials")
 
     token = create_access_token({
         "user_id": str(user["_id"]),
@@ -1388,6 +1556,8 @@ async def student_login(request: StudentLoginRequest, _: None = Depends(enforce_
     })
     
     if not user or not user.get("password") or not verify_password(request.password, user["password"]):
+        raise HTTPException(status_code=401, detail="Invalid credentials")
+    if user.get("is_active") is False:
         raise HTTPException(status_code=401, detail="Invalid credentials")
 
     try:
@@ -1487,6 +1657,7 @@ async def student_register_verify_otp(
         "email": request.email,
         "password": hash_password(request.password),
         "room_number": request.room_number,
+        "is_active": True,
         "created_at": datetime.utcnow()
     }
     if request.contact_number:
@@ -1499,6 +1670,11 @@ async def student_register_verify_otp(
         await auto_link_parcels_for_student(student_doc)
     except Exception as exc:
         logger.warning("Auto-link after student registration failed: %s", exc)
+
+    try:
+        await seed_student_room_assignment(student_doc, actor=None, reason="Initial room assignment at registration")
+    except Exception as exc:
+        logger.warning("Failed to seed room assignment after student registration: %s", exc)
 
     token = create_access_token({
         "user_id": student_doc["_id"],
@@ -1533,7 +1709,8 @@ async def student_forgot_password_request_otp(request: ForgotPasswordRequest, _:
     student = await db.users.find_one({
         "roll_number": request.roll_number,
         "role": UserRole.STUDENT,
-        "hostel_type": hostel_type
+        "hostel_type": hostel_type,
+        "is_active": {"$ne": False},
     })
     if not student or not student.get("email"):
         # Do not leak account existence
@@ -1567,7 +1744,8 @@ async def student_forgot_password_verify_otp(request: ResetPasswordVerify, _: No
     student = await db.users.find_one({
         "roll_number": request.roll_number,
         "role": UserRole.STUDENT,
-        "hostel_type": hostel_type
+        "hostel_type": hostel_type,
+        "is_active": {"$ne": False},
     })
     if not student or not student.get("email"):
         raise HTTPException(status_code=401, detail="Invalid OTP")
@@ -1656,6 +1834,7 @@ async def add_user(request: AddUserRequest, current_user: dict = Depends(get_cur
         "name": request.name,
         "role": request.role,
         "hostel_type": hostel_type,
+        "is_active": True,
         "created_at": datetime.utcnow()
     }
     
@@ -1694,10 +1873,204 @@ async def add_user(request: AddUserRequest, current_user: dict = Depends(get_cur
             await auto_link_parcels_for_student(user_data)
         except Exception as exc:
             logger.warning("Auto-link after admin student creation failed: %s", exc)
+        try:
+            await seed_student_room_assignment(
+                user_data,
+                actor=current_user,
+                reason="Initial room assignment via admin add-user",
+            )
+        except Exception as exc:
+            logger.warning("Failed to seed room assignment via admin add-user: %s", exc)
 
     user_data.pop("password", None)
     
     return {"message": "User added successfully", "user": user_data}
+
+
+@api_router.patch("/admin/student/room-transfer")
+async def transfer_student_room(
+    request: TransferStudentRoomRequest,
+    current_user: dict = Depends(get_current_user),
+):
+    """Transfer an active student to a new room with audit history."""
+    require_admin(current_user)
+    hostel_type = validate_hostel_type(request.hostel_type)
+    student = await db.users.find_one({
+        "roll_number": request.roll_number,
+        "role": UserRole.STUDENT,
+        "hostel_type": hostel_type,
+    })
+    if not student:
+        raise HTTPException(status_code=404, detail="Student not found")
+    if student.get("is_active") is False:
+        raise HTTPException(status_code=400, detail="Student account is inactive")
+
+    current_room = (student.get("room_number") or "").strip()
+    if current_room == request.new_room_number:
+        raise HTTPException(status_code=400, detail="Student is already in this room")
+
+    now = datetime.utcnow()
+    student_id = str(student["_id"])
+    if current_room:
+        await close_active_room_assignment(
+            student_id=student_id,
+            status=RoomAssignmentStatus.TRANSFERRED,
+            reason=request.reason,
+            actor=current_user,
+            ended_at=now,
+        )
+
+    assignment_doc = build_room_assignment_doc(
+        student=student,
+        room_number=request.new_room_number,
+        status=RoomAssignmentStatus.ACTIVE,
+        reason=request.reason,
+        actor=current_user,
+        started_at=now,
+    )
+    assignment_result = await db.room_assignments.insert_one(assignment_doc)
+
+    await db.users.update_one(
+        {"_id": student["_id"]},
+        {
+            "$set": {
+                "room_number": request.new_room_number,
+                "updated_at": now,
+                "is_active": True,
+            },
+            "$unset": {
+                "left_at": "",
+                "left_reason": "",
+            },
+        },
+    )
+
+    updated_student = await db.users.find_one({"_id": student["_id"]})
+    if not updated_student:
+        raise HTTPException(status_code=500, detail="Failed to load updated student")
+    updated_student["_id"] = str(updated_student["_id"])
+    updated_student.pop("password", None)
+
+    return {
+        "message": "Student room updated successfully",
+        "student": updated_student,
+        "room_assignment": {
+            "id": str(assignment_result.inserted_id),
+            "room_number": request.new_room_number,
+            "status": RoomAssignmentStatus.ACTIVE,
+            "reason": request.reason,
+            "start_at": now,
+        },
+    }
+
+
+@api_router.patch("/admin/student/deactivate")
+async def deactivate_student(
+    request: DeactivateStudentRequest,
+    current_user: dict = Depends(get_current_user),
+):
+    """Deactivate a student account after hostel exit and close active room assignment."""
+    require_admin(current_user)
+    hostel_type = validate_hostel_type(request.hostel_type)
+    student = await db.users.find_one({
+        "roll_number": request.roll_number,
+        "role": UserRole.STUDENT,
+        "hostel_type": hostel_type,
+    })
+    if not student:
+        raise HTTPException(status_code=404, detail="Student not found")
+    if student.get("is_active") is False:
+        raise HTTPException(status_code=400, detail="Student is already inactive")
+
+    student_id = str(student["_id"])
+    pending_count = await db.parcels.count_documents({
+        "student_id": student_id,
+        "status": {"$in": [ParcelStatus.PENDING, ParcelStatus.UNASSIGNED]},
+    })
+    if pending_count > 0:
+        raise HTTPException(
+            status_code=409,
+            detail="Student has pending parcels. Resolve them before deactivation.",
+        )
+
+    now = datetime.utcnow()
+    await close_active_room_assignment(
+        student_id=student_id,
+        status=RoomAssignmentStatus.LEFT_HOSTEL,
+        reason=request.reason,
+        actor=current_user,
+        ended_at=now,
+    )
+
+    await db.users.update_one(
+        {"_id": student["_id"]},
+        {
+            "$set": {
+                "is_active": False,
+                "room_number": None,
+                "left_at": now,
+                "left_reason": request.reason,
+                "updated_at": now,
+                "expoPushToken": None,
+            }
+        },
+    )
+
+    student_email = (student.get("email") or "").strip()
+    if student_email:
+        await db.otps.update_many(
+            {"email": student_email, "is_used": False},
+            {"$set": {"is_used": True}},
+        )
+
+    return {
+        "message": "Student deactivated successfully",
+        "roll_number": request.roll_number,
+        "hostel_type": hostel_type,
+        "left_at": now,
+    }
+
+
+@api_router.get("/admin/student/room-history")
+async def get_student_room_history(
+    roll_number: str = ApiQuery(..., min_length=2, max_length=32),
+    hostel_type: str = ApiQuery(..., min_length=4, max_length=8),
+    current_user: dict = Depends(get_current_user),
+):
+    """Fetch room assignment history for a student."""
+    require_admin(current_user)
+    try:
+        validated_roll = _validate_roll_number(roll_number)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    validated_hostel = validate_hostel_type(hostel_type)
+    student = await db.users.find_one({
+        "roll_number": validated_roll,
+        "role": UserRole.STUDENT,
+        "hostel_type": validated_hostel,
+    })
+    if not student:
+        raise HTTPException(status_code=404, detail="Student not found")
+
+    assignments = await db.room_assignments.find(
+        {"student_id": str(student["_id"])}
+    ).sort("start_at", -1).to_list(200)
+    for assignment in assignments:
+        assignment["_id"] = str(assignment["_id"])
+
+    return {
+        "student": {
+            "student_id": str(student["_id"]),
+            "name": student.get("name"),
+            "roll_number": student.get("roll_number"),
+            "hostel_type": student.get("hostel_type"),
+            "is_active": student.get("is_active", True),
+            "room_number": student.get("room_number"),
+        },
+        "assignments": assignments,
+    }
+
 
 @api_router.get("/admin/users")
 async def get_all_users(current_user: dict = Depends(get_current_user)):
@@ -2119,19 +2492,23 @@ async def verify_parcel_otp(request: VerifyParcelOTPRequest, current_user: dict 
     
     # Update parcel status
     delivered_at = datetime.utcnow()
+    delivered_update_fields: Dict[str, Any] = {
+        "status": ParcelStatus.DELIVERED,
+        "delivered_at": delivered_at,
+        "collected_by_delegate": False,
+        "delegated_receiver_student_id": None,
+        "delegated_receiver_info": None,
+    }
     await db.parcels.update_one(
         {"_id": parcel_object_id},
         {
-            "$set": {
-                "status": ParcelStatus.DELIVERED,
-                "delivered_at": delivered_at,
-            },
+            "$set": delivered_update_fields,
             "$push": {
                 "status_history": build_status_event(
                     ParcelTimelineEvent.DELIVERED,
                     actor=current_user,
                     timestamp=delivered_at,
-                    meta={"method": "OTP"},
+                    meta={"method": "OTP", "collected_by_delegate": False},
                 )
             },
         }
@@ -2243,20 +2620,32 @@ async def verify_parcel_qr(request: VerifyQRRequest, current_user: dict = Depend
     # Mark as delivered and clear token and delegation fields
     delivered_at = datetime.utcnow()
     collected_by_delegate = parcel.get("student_id") != current_user["_id"]
+    delegated_receiver_info = (
+        build_delegated_receiver_info(current_user) if collected_by_delegate else None
+    )
+    delivered_update_fields: Dict[str, Any] = {
+        "status": ParcelStatus.DELIVERED,
+        "delivered_at": delivered_at,
+        "collected_by_delegate": collected_by_delegate,
+        "delegated_receiver_student_id": str(current_user["_id"]) if collected_by_delegate else None,
+        "delegated_receiver_info": delegated_receiver_info,
+    }
     await db.parcels.update_one(
         {"_id": parcel_object_id},
         {
-            "$set": {
-                "status": ParcelStatus.DELIVERED,
-                "delivered_at": delivered_at,
-                "collected_by_delegate": collected_by_delegate,
-            },
+            "$set": delivered_update_fields,
             "$push": {
                 "status_history": build_status_event(
                     ParcelTimelineEvent.DELIVERED,
                     actor=current_user,
                     timestamp=delivered_at,
-                    meta={"method": "QR", "collected_by_delegate": collected_by_delegate},
+                    meta={
+                        "method": "QR",
+                        "collected_by_delegate": collected_by_delegate,
+                        "delegated_receiver_student_id": (
+                            str(current_user["_id"]) if collected_by_delegate else None
+                        ),
+                    },
                 )
             },
             "$unset": {

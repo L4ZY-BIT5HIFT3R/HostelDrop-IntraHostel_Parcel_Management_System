@@ -34,6 +34,16 @@ interface Parcel {
   otp_sent_at?: string;
   delivered_at?: string;
   status_history?: { event?: string; timestamp?: string }[];
+  collected_by_delegate?: boolean;
+  delegated_receiver_student_id?: string | null;
+  delegated_receiver_info?: {
+    student_id?: string;
+    name?: string;
+    email?: string;
+    roll_number?: string;
+    room_number?: string;
+    hostel_type?: string;
+  } | null;
 }
 
 interface StudentDetails {
@@ -55,6 +65,7 @@ export default function DeliveredParcels() {
   const [refreshing, setRefreshing] = useState(false);
   const [studentModalVisible, setStudentModalVisible] = useState(false);
   const [selectedStudent, setSelectedStudent] = useState<StudentDetails | null>(null);
+  const [studentModalTitle, setStudentModalTitle] = useState('Student Details');
   const [loadingStudent, setLoadingStudent] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
   const [listHeight, setListHeight] = useState(0);
@@ -128,6 +139,7 @@ export default function DeliveredParcels() {
 
   const fetchStudentDetails = async (studentId: string) => {
     setSelectedStudent(null);
+    setStudentModalTitle('Student Details');
     setStudentModalVisible(true);
     setLoadingStudent(true);
     try {
@@ -141,13 +153,33 @@ export default function DeliveredParcels() {
     }
   };
 
+  const openDelegationReceiverDetails = (parcel: Parcel) => {
+    const receiver = parcel.delegated_receiver_info;
+    if (!parcel.collected_by_delegate) {
+      return;
+    }
+    if (!receiver) {
+      setErrorMessage('Delegation receiver details are unavailable for this parcel.');
+      return;
+    }
+
+    setSelectedStudent({
+      _id: receiver.student_id || parcel.delegated_receiver_student_id || '',
+      name: receiver.name || 'Unknown',
+      email: receiver.email || 'Not available',
+      roll_number: receiver.roll_number || 'Not available',
+      room_number: receiver.room_number || 'Not available',
+      hostel_type: receiver.hostel_type || parcel.hostel_type,
+      contact_number: undefined,
+    });
+    setStudentModalTitle('Delegation Receiver');
+    setStudentModalVisible(true);
+    setLoadingStudent(false);
+  };
+
   const renderParcelItem = ({ item, index }: { item: Parcel; index: number }) => (
     <AnimatedCard index={index} activeIndex={activeIndex} scrollY={scrollY}>
-      <TouchableOpacity
-        style={styles.parcelCard}
-        onPress={() => item.student_id && fetchStudentDetails(item.student_id)}
-        activeOpacity={item.student_id ? 0.7 : 1}
-      >
+      <View style={styles.parcelCard}>
         <View style={styles.parcelHeader}>
           <View style={styles.parcelInfo}>
             <Text style={styles.roomNumber}>Room {item.room_number}</Text>
@@ -156,9 +188,26 @@ export default function DeliveredParcels() {
               <Text style={styles.deliveredText}>Delivered</Text>
             </View>
           </View>
-          {item.student_id && (
-            <Ionicons name="information-circle-outline" size={24} color={Colors.accentBlue} />
-          )}
+          <View style={styles.headerActions}>
+            {item.collected_by_delegate && (
+              <TouchableOpacity
+                style={styles.delegationBadge}
+                onPress={() => openDelegationReceiverDetails(item)}
+                activeOpacity={0.8}
+              >
+                <Ionicons name="people-outline" size={18} color={Colors.accentGreen} />
+              </TouchableOpacity>
+            )}
+            {item.student_id && (
+              <TouchableOpacity
+                style={styles.infoButton}
+                onPress={() => fetchStudentDetails(item.student_id!)}
+                activeOpacity={0.8}
+              >
+                <Ionicons name="information-circle-outline" size={22} color={Colors.accentBlue} />
+              </TouchableOpacity>
+            )}
+          </View>
         </View>
 
         {item.student_name && (
@@ -183,10 +232,13 @@ export default function DeliveredParcels() {
           compact
         />
 
-        {item.student_id && (
-          <Text style={styles.tapHint}>Tap to view student details</Text>
+        {item.collected_by_delegate && (
+          <Text style={styles.tapHint}>Delegated pickup completed. Tap the people icon for receiver details.</Text>
         )}
-      </TouchableOpacity>
+        {!item.collected_by_delegate && item.student_id && (
+          <Text style={styles.tapHint}>Tap the info icon to view student details.</Text>
+        )}
+      </View>
     </AnimatedCard>
   );
 
@@ -280,7 +332,7 @@ export default function DeliveredParcels() {
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
             <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Student Details</Text>
+              <Text style={styles.modalTitle}>{studentModalTitle}</Text>
               <TouchableOpacity onPress={() => setStudentModalVisible(false)}>
                 <Ionicons name="close" size={24} color={Colors.textMuted} />
               </TouchableOpacity>
@@ -422,6 +474,27 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     marginBottom: 12,
+  },
+  headerActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  infoButton: {
+    width: 28,
+    height: 28,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  delegationBadge: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    backgroundColor: Colors.accentGreenDim,
+    borderWidth: 1,
+    borderColor: Colors.accentGreen,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   parcelInfo: {
     flexDirection: 'row',

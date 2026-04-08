@@ -5,6 +5,8 @@ import {
   StyleSheet,
   RefreshControl,
   Animated,
+  TouchableOpacity,
+  Modal,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -27,6 +29,24 @@ interface Parcel {
   otp_sent_at?: string;
   delivered_at?: string;
   status_history?: { event?: string; timestamp?: string }[];
+  collected_by_delegate?: boolean;
+  delegated_receiver_info?: {
+    student_id?: string;
+    name?: string;
+    email?: string;
+    roll_number?: string;
+    room_number?: string;
+    hostel_type?: string;
+  } | null;
+}
+
+interface DelegationReceiverInfo {
+  student_id?: string;
+  name?: string;
+  email?: string;
+  roll_number?: string;
+  room_number?: string;
+  hostel_type?: string;
 }
 
 const DELIVERED_STACK_CARD_HEIGHT = 240;
@@ -37,6 +57,8 @@ export default function MyParcels() {
   const [refreshing, setRefreshing] = useState(false);
   const [listHeight, setListHeight] = useState(0);
   const [activeIndex, setActiveIndex] = useState(0);
+  const [delegateModalVisible, setDelegateModalVisible] = useState(false);
+  const [selectedDelegate, setSelectedDelegate] = useState<DelegationReceiverInfo | null>(null);
   const activeIndexRef = useRef(0);
   const scrollY = useRef(new Animated.Value(0)).current;
 
@@ -79,6 +101,24 @@ export default function MyParcels() {
     }
   };
 
+  const openDelegateDetails = (parcel: Parcel) => {
+    if (!parcel.collected_by_delegate) {
+      return;
+    }
+    if (!parcel.delegated_receiver_info) {
+      setSelectedDelegate({
+        name: 'Unknown',
+        roll_number: 'Not available',
+        email: 'Not available',
+        room_number: 'Not available',
+        hostel_type: parcel.hostel_type,
+      });
+    } else {
+      setSelectedDelegate(parcel.delegated_receiver_info);
+    }
+    setDelegateModalVisible(true);
+  };
+
   const renderParcelItem = ({ item, index }: { item: Parcel; index: number }) => (
     <AnimatedCard index={index} activeIndex={activeIndex} scrollY={scrollY}>
       <View style={styles.parcelCard}>
@@ -90,6 +130,15 @@ export default function MyParcels() {
               <Text style={styles.deliveredText}>Delivered</Text>
             </View>
           </View>
+          {item.collected_by_delegate && (
+            <TouchableOpacity
+              style={styles.delegationBadge}
+              onPress={() => openDelegateDetails(item)}
+              activeOpacity={0.8}
+            >
+              <Ionicons name="people-outline" size={18} color={Colors.accentGreen} />
+            </TouchableOpacity>
+          )}
         </View>
 
         {item.description && (
@@ -105,6 +154,9 @@ export default function MyParcels() {
           deliveredAt={item.delivered_at}
           compact
         />
+        {item.collected_by_delegate && (
+          <Text style={styles.tapHint}>Received via delegation. Tap the people icon for receiver details.</Text>
+        )}
       </View>
     </AnimatedCard>
   );
@@ -165,6 +217,36 @@ export default function MyParcels() {
           </View>
         }
       />
+
+      <Modal
+        visible={delegateModalVisible}
+        animationType="slide"
+        transparent
+        onRequestClose={() => setDelegateModalVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Delegation Receiver</Text>
+              <TouchableOpacity onPress={() => setDelegateModalVisible(false)}>
+                <Ionicons name="close" size={24} color={Colors.textMuted} />
+              </TouchableOpacity>
+            </View>
+
+            {selectedDelegate ? (
+              <View style={styles.detailList}>
+                <Text style={styles.detailRow}><Text style={styles.detailLabel}>Name: </Text>{selectedDelegate.name || 'Not available'}</Text>
+                <Text style={styles.detailRow}><Text style={styles.detailLabel}>Roll: </Text>{selectedDelegate.roll_number || 'Not available'}</Text>
+                <Text style={styles.detailRow}><Text style={styles.detailLabel}>Email: </Text>{selectedDelegate.email || 'Not available'}</Text>
+                <Text style={styles.detailRow}><Text style={styles.detailLabel}>Room: </Text>{selectedDelegate.room_number || 'Not available'}</Text>
+                <Text style={styles.detailRow}><Text style={styles.detailLabel}>Hostel: </Text>{selectedDelegate.hostel_type || 'Not available'}</Text>
+              </View>
+            ) : (
+              <Text style={styles.emptySubtext}>No delegation receiver details available.</Text>
+            )}
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -202,6 +284,9 @@ const styles = StyleSheet.create({
   },
   parcelHeader: {
     marginBottom: 12,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
   },
   parcelInfo: {
     flexDirection: 'row',
@@ -227,10 +312,26 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: Colors.delivered,
   },
+  delegationBadge: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    backgroundColor: Colors.accentGreenDim,
+    borderWidth: 1,
+    borderColor: Colors.accentGreen,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   description: {
     fontSize: 14,
     color: Colors.textMuted,
     marginBottom: 12,
+  },
+  tapHint: {
+    fontSize: 12,
+    color: Colors.accentGreen,
+    marginTop: 8,
+    textAlign: 'center',
   },
   emptyContainer: {
     flex: 1,
@@ -248,5 +349,40 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: Colors.textMuted,
     marginTop: 8,
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: Colors.overlay,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 24,
+  },
+  modalContent: {
+    width: '100%',
+    maxWidth: 420,
+    ...GlassCard,
+    padding: 20,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 12,
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: Colors.textPrimary,
+  },
+  detailList: {
+    gap: 8,
+  },
+  detailRow: {
+    color: Colors.textSecondary,
+    fontSize: 14,
+  },
+  detailLabel: {
+    color: Colors.textPrimary,
+    fontWeight: '600',
   },
 });
