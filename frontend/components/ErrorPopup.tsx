@@ -2,14 +2,17 @@ import React from 'react';
 import { Modal, View, Text, StyleSheet, TouchableOpacity, Pressable } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, GlassCard } from '../utils/theme';
+import { normalizeMessage } from '../utils/errorMessage';
 
 type Props = {
   visible: boolean;
-  message: string;
+  message: unknown;
   onClose: () => void;
 };
 
 export default function ErrorPopup({ visible, message, onClose }: Props) {
+  const safeMessage = normalizeMessage(message, 'Wrong OTP or password. Try again.');
+
   return (
     <Modal visible={visible} animationType="fade" transparent onRequestClose={onClose}>
       <View style={styles.overlay}>
@@ -22,7 +25,7 @@ export default function ErrorPopup({ visible, message, onClose }: Props) {
             <Ionicons name="warning-outline" size={32} color={Colors.accentRed} />
           </View>
           <Text style={styles.title}>Something went wrong</Text>
-          <Text style={styles.message}>{message || 'Wrong OTP or password. Try again.'}</Text>
+          <Text style={styles.message}>{safeMessage}</Text>
           <TouchableOpacity style={styles.button} onPress={onClose} activeOpacity={0.85}>
             <Text style={styles.buttonText}>Try Again</Text>
           </TouchableOpacity>

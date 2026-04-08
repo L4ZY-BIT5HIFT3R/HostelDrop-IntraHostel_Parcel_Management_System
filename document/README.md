@@ -1,4 +1,4 @@
-﻿#  Hostel Parcel Management System
+#  Hostel Parcel Management System
 
 A mobile-first system to manage parcel deliveries in hostel environments. The project includes a FastAPI backend with MongoDB and an Expo (React Native + TypeScript) frontend.
 
@@ -122,8 +122,8 @@ Frontend (Windows):
 
 **Seed & Test Data**
 - Seed guards and sample students via [backend/seed_database.py](backend/seed_database.py). Credentials:
-  - Boys Guard: username `boys_guard`, password `guard123`
-  - Girls Guard: username `girls_guard`, password `guard123`
+  - Boys Guard: username `boys_guard`, password `<SEED_GUARD_PASSWORD>`
+  - Girls Guard: username `girls_guard`, password `<SEED_GUARD_PASSWORD>`
 - Example student emails follow the `firstname.lastname@iiitg.ac.in` pattern (see [PROJECT_README.md](PROJECT_README.md)).
 - To bulk import students from a TSV file, see [backend/import_students.py](backend/import_students.py) and configure `IMPORT_STUDENTS_FILE` in backend `.env`.
 
@@ -139,7 +139,7 @@ Quick manual checks (replace tokens appropriately):
 # Guard login
 curl -X POST http://localhost:8001/api/auth/guard/login \
   -H "Content-Type: application/json" \
-  -d '{"username":"boys_guard","password":"guard123","hostel_type":"BOYS"}'
+  -d '{"username":"boys_guard","password":"<SEED_GUARD_PASSWORD>","hostel_type":"BOYS"}'
 
 # Add parcel with roll number (requires Bearer token)
 curl -X POST http://localhost:8001/api/parcel/add \
@@ -175,3 +175,4 @@ curl -X POST http://localhost:8001/api/parcel/add \
 
 **License & Purpose**
 - Built for academic/demo purposes. See more context in [PROJECT_README.md](PROJECT_README.md).
+

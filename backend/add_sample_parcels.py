@@ -4,8 +4,17 @@ Add sample parcels for testing
 
 import requests
 import json
+import os
+from pathlib import Path
+from dotenv import load_dotenv
 
-BASE_URL = "http://localhost:8001/api"
+load_dotenv(Path(__file__).resolve().parent / ".env")
+
+BASE_URL = os.environ.get("API_BASE_URL", "http://localhost:8001/api")
+BOYS_GUARD_USERNAME = os.environ.get("BOYS_GUARD_USERNAME", "boys_guard")
+GIRLS_GUARD_USERNAME = os.environ.get("GIRLS_GUARD_USERNAME", "girls_guard")
+BOYS_GUARD_PASSWORD = os.environ.get("BOYS_GUARD_PASSWORD")
+GIRLS_GUARD_PASSWORD = os.environ.get("GIRLS_GUARD_PASSWORD")
 
 # First, login as guard to get token
 def get_guard_token(hostel_type, username, password):
@@ -23,10 +32,17 @@ def add_sample_parcels():
     print("=" * 60)
     print("Adding Sample Parcels for Testing")
     print("=" * 60)
+
+    if not BOYS_GUARD_PASSWORD or not GIRLS_GUARD_PASSWORD:
+        print("Set BOYS_GUARD_PASSWORD and GIRLS_GUARD_PASSWORD in environment before running this script.")
+        return
     
     # Boys Hostel Parcels
     print("\n📦 Adding Boys Hostel Parcels...")
-    boys_token = get_guard_token("BOYS", "boys_guard", "guard123")
+    boys_token = get_guard_token("BOYS", BOYS_GUARD_USERNAME, BOYS_GUARD_PASSWORD)
+    if not boys_token:
+        print("Failed to login boys guard. Check BOYS_GUARD_USERNAME/BOYS_GUARD_PASSWORD.")
+        return
     
     boys_parcels = [
         {
@@ -81,7 +97,10 @@ def add_sample_parcels():
     
     # Girls Hostel Parcels
     print("\n📦 Adding Girls Hostel Parcels...")
-    girls_token = get_guard_token("GIRLS", "girls_guard", "guard123")
+    girls_token = get_guard_token("GIRLS", GIRLS_GUARD_USERNAME, GIRLS_GUARD_PASSWORD)
+    if not girls_token:
+        print("Failed to login girls guard. Check GIRLS_GUARD_USERNAME/GIRLS_GUARD_PASSWORD.")
+        return
     
     girls_parcels = [
         {

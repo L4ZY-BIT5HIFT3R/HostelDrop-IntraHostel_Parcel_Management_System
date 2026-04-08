@@ -123,7 +123,7 @@ Results: Rooms 101, 102, 103, 104, 105, etc.
 
 ### Test 1: Back Button
 **Guard Dashboard:**
-1. Login as guard (boys_guard / guard123)
+1. Login as guard (boys_guard / <SEED_GUARD_PASSWORD>)
 2. You're in Guard Dashboard
 3. Click the ← button in top-left
 4. ✅ Should return to role selection screen
@@ -340,3 +340,4 @@ Your Hostel Parcel Management System now has enhanced navigation and search capa
    - Click × → All parcels return
 
 **Everything should work smoothly! 🚀**
+

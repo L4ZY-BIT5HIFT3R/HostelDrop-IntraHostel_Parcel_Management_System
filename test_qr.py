@@ -1,13 +1,24 @@
 import requests
+import os
+from pathlib import Path
+from dotenv import load_dotenv
 
-API_URL = "http://localhost:8001/api"
+load_dotenv(Path(__file__).resolve().parent / "backend/.env")
+
+API_URL = os.environ.get("API_BASE_URL", "http://localhost:8001/api")
+TEST_GUARD_USERNAME = os.environ.get("TEST_GUARD_USERNAME", "boys_guard")
+TEST_GUARD_PASSWORD = os.environ.get("TEST_GUARD_PASSWORD")
+TEST_GUARD_HOSTEL = os.environ.get("TEST_GUARD_HOSTEL", "BOYS")
 
 def test_generate_qr():
+    if not TEST_GUARD_PASSWORD:
+        raise RuntimeError("TEST_GUARD_PASSWORD must be set to run test_qr.py")
+
     # 1. Login as guard
     login_data = {
-        "username": "guard1",
-        "password": "password123",
-        "hostel_type": "BOYS"
+        "username": TEST_GUARD_USERNAME,
+        "password": TEST_GUARD_PASSWORD,
+        "hostel_type": TEST_GUARD_HOSTEL
     }
     r = requests.post(f"{API_URL}/auth/guard/login", json=login_data)
     if r.status_code != 200:

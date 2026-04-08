@@ -21,6 +21,7 @@ import api from '../utils/api';
 import { useAuthStore } from '../store/authStore';
 import ErrorPopup from '../components/ErrorPopup';
 import { Colors, GlassInput } from '../utils/theme';
+import { extractErrorMessage } from '../utils/errorMessage';
 
 export default function StudentLogin() {
   const router = useRouter();
@@ -76,7 +77,7 @@ export default function StudentLogin() {
         await login(response.data.user, response.data.access_token);
         router.replace('/student-dashboard');
       } catch (error: any) {
-        setErrorMessage(error.response?.data?.detail || 'Invalid credentials. Try again.');
+        setErrorMessage(extractErrorMessage(error, 'Invalid credentials. Try again.'));
         setErrorVisible(true);
       } finally {
         setLoading(false);
@@ -105,7 +106,7 @@ export default function StudentLogin() {
         setOtpSent(true);
         Alert.alert('Registration OTP Sent', `OTP has been sent to ${email}`);
       } catch (error: any) {
-        setErrorMessage(error.response?.data?.detail || 'Failed to send Registration OTP. Try again.');
+        setErrorMessage(extractErrorMessage(error, 'Failed to send Registration OTP. Try again.'));
         setErrorVisible(true);
       } finally {
         setLoading(false);
@@ -136,7 +137,7 @@ export default function StudentLogin() {
       await login(response.data.user, response.data.access_token);
       router.replace('/student-dashboard');
     } catch (error: any) {
-      setErrorMessage(error.response?.data?.detail || 'Invalid OTP. Try again.');
+      setErrorMessage(extractErrorMessage(error, 'Invalid OTP. Try again.'));
       setErrorVisible(true);
     } finally {
       setLoading(false);
@@ -167,9 +168,13 @@ export default function StudentLogin() {
       });
       setFpOtpSent(true);
       setFpMaskedEmail(response.data.email || '');
-      Alert.alert('OTP Sent', `A password reset OTP has been sent to ${response.data.email}`);
+      if (response.data.email) {
+        Alert.alert('OTP Sent', `A password reset OTP has been sent to ${response.data.email}`);
+      } else {
+        Alert.alert('OTP Sent', 'If an account exists, a password reset OTP has been sent.');
+      }
     } catch (error: any) {
-      setErrorMessage(error.response?.data?.detail || 'Failed to send OTP. Try again.');
+      setErrorMessage(extractErrorMessage(error, 'Failed to send OTP. Try again.'));
       setErrorVisible(true);
     } finally {
       setFpLoading(false);
@@ -182,8 +187,8 @@ export default function StudentLogin() {
       setErrorVisible(true);
       return;
     }
-    if (!fpNewPassword.trim() || fpNewPassword.length < 4) {
-      setErrorMessage('New password must be at least 4 characters');
+    if (!fpNewPassword.trim() || fpNewPassword.length < 8) {
+      setErrorMessage('New password must be at least 8 characters');
       setErrorVisible(true);
       return;
     }
@@ -199,7 +204,7 @@ export default function StudentLogin() {
       setForgotModalVisible(false);
       setPassword('');
     } catch (error: any) {
-      setErrorMessage(error.response?.data?.detail || 'Failed to reset password. Try again.');
+      setErrorMessage(extractErrorMessage(error, 'Failed to reset password. Try again.'));
       setErrorVisible(true);
     } finally {
       setFpLoading(false);

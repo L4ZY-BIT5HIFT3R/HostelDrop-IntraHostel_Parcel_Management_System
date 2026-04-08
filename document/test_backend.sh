@@ -5,15 +5,23 @@ echo "Testing Hostel Parcel Management API"
 echo "======================================"
 echo ""
 
+if [ -z "$TEST_GUARD_PASSWORD" ]; then
+  echo "Set TEST_GUARD_PASSWORD before running this script."
+  exit 1
+fi
+
+TEST_GUARD_USERNAME="${TEST_GUARD_USERNAME:-boys_guard}"
+TEST_GUARD_HOSTEL="${TEST_GUARD_HOSTEL:-BOYS}"
+
 # Test 1: Guard Login
 echo "Test 1: Guard Login"
 TOKEN=$(curl -s -X POST http://localhost:8001/api/auth/guard/login \
   -H "Content-Type: application/json" \
-  -d '{"username":"boys_guard","password":"guard123","hostel_type":"BOYS"}' | grep -o '"access_token":"[^"]*' | cut -d'"' -f4)
+  -d "{\"username\":\"$TEST_GUARD_USERNAME\",\"password\":\"$TEST_GUARD_PASSWORD\",\"hostel_type\":\"$TEST_GUARD_HOSTEL\"}" | grep -o '"access_token":"[^"]*' | cut -d'"' -f4)
 
 if [ -n "$TOKEN" ]; then
   echo "✓ Guard login successful"
-  echo "Token: ${TOKEN:0:50}..."
+  echo "Token acquired"
 else
   echo "✗ Guard login failed"
   exit 1

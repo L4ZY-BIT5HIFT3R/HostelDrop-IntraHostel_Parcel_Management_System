@@ -18,6 +18,7 @@ import api from '../utils/api';
 import { useAuthStore } from '../store/authStore';
 import ErrorPopup from '../components/ErrorPopup';
 import { Colors, GlassCard, GlassInput } from '../utils/theme';
+import { extractErrorMessage } from '../utils/errorMessage';
 
 export default function GuardLogin() {
   const router = useRouter();
@@ -57,7 +58,7 @@ export default function GuardLogin() {
       await login(response.data.user, response.data.access_token);
       router.replace('/guard-dashboard');
     } catch (error: any) {
-      setErrorMessage(error.response?.data?.detail || 'Invalid credentials. Try again.');
+      setErrorMessage(extractErrorMessage(error, 'Invalid credentials. Try again.'));
       setErrorVisible(true);
     } finally {
       setLoading(false);

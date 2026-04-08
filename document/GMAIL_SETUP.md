@@ -26,7 +26,7 @@ JWT_SECRET_KEY="your-secret-key-change-in-production"
 # Gmail OAuth2 Configuration (ADD THESE)
 GMAIL_CLIENT_ID="123456789-abcdefgh.apps.googleusercontent.com"
 GMAIL_CLIENT_SECRET="GOCSPX-abcdefghijklmnop"
-GMAIL_REFRESH_TOKEN="1//0abcdefghijklmnopqrstuvwxyz"
+GMAIL_REFRESH_TOKEN="<GMAIL_REFRESH_TOKEN_FROM_OAUTH2>"
 ```
 
 ## How to Obtain Gmail OAuth2 Credentials

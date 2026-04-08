@@ -146,11 +146,11 @@ To enable email OTP functionality:
 
 **Boys Hostel Guard**
 - Username: `boys_guard`
-- Password: `guard123`
+- Password: `<SEED_GUARD_PASSWORD>`
 
 **Girls Hostel Guard**
 - Username: `girls_guard`
-- Password: `guard123`
+- Password: `<SEED_GUARD_PASSWORD>`
 
 ### Students
 
@@ -329,7 +329,7 @@ app/
    ```bash
    curl -X POST http://localhost:8001/api/auth/guard/login \
      -H "Content-Type: application/json" \
-     -d '{"username":"boys_guard","password":"guard123","hostel_type":"BOYS"}'
+     -d '{"username":"boys_guard","password":"<SEED_GUARD_PASSWORD>","hostel_type":"BOYS"}'
    ```
 
 2. **Test Add Parcel**
@@ -404,3 +404,4 @@ For issues or questions:
 ---
 
 **Built with ❤️ for IIIT Guwahati Hostel Management**
+

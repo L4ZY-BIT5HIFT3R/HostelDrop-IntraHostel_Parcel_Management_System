@@ -107,7 +107,7 @@ Case 3: No roll number provided
 
 ### Test 1: Logout Button
 **Steps:**
-1. Login as guard (boys_guard / guard123)
+1. Login as guard (boys_guard / <SEED_GUARD_PASSWORD>)
 2. Click the logout icon (🚪) in top-right corner
 3. Click "Logout" in confirmation dialog
 4. ✅ Should return to role selection screen
@@ -247,3 +247,4 @@ Your app is now working exactly as specified in your requirements! 🎉
 4. Everything should work smoothly now!
 
 **All fixes are live - please test and let me know if you need any adjustments!**
+

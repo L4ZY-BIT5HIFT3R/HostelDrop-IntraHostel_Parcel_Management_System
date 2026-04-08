@@ -108,7 +108,7 @@ Gmail not configured. OTP for student@iiitg.ac.in: 123456
    ```
 
 2. **In your app:**
-   - Login as `boys_guard` / `guard123`
+   - Login as `boys_guard` / `<SEED_GUARD_PASSWORD>`
    - Find parcel for Room 101 or 102
    - Click "Send OTP"
 
@@ -258,3 +258,4 @@ tail -f /var/log/supervisor/backend.out.log | grep "OTP"
 3. **Optional:** Set up Gmail OAuth2 for actual email sending (see `/app/GMAIL_SETUP.md`)
 
 **Your OTP system is fully functional!**
+

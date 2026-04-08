@@ -1,7 +1,7 @@
 import axios from 'axios';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import Constants from 'expo-constants';
 import { Platform } from 'react-native';
+import { clearAuthSession, getAuthToken } from './sessionStorage';
 
 const getBaseUrl = () => {
   const envUrl = process.env.EXPO_PUBLIC_BACKEND_URL?.trim();
@@ -35,7 +35,7 @@ const api = axios.create({
 // Request interceptor to add auth token
 api.interceptors.request.use(
   async (config) => {
-    const token = await AsyncStorage.getItem('auth_token');
+    const token = await getAuthToken();
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
     }
@@ -61,8 +61,7 @@ api.interceptors.response.use(
       );
 
       if (isAuthFailure) {
-        await AsyncStorage.removeItem('auth_token');
-        await AsyncStorage.removeItem('user_data');
+        await clearAuthSession();
       }
     }
     return Promise.reject(error);

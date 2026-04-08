@@ -21,6 +21,7 @@ import api, { generateQrCode } from '../../utils/api';
 import { useAuthStore } from '../../store/authStore';
 import { Colors, GlassCard, GlassInput } from '../../utils/theme';
 import AnimatedCard, { STACK_CARD_HEIGHT, STACK_CARD_SPACING, STACK_FOCUS_OFFSET } from '../../components/AnimatedCard';
+import { extractErrorMessage } from '../../utils/errorMessage';
 
 interface Parcel {
   _id: string;
@@ -51,7 +52,6 @@ export default function GuardDashboardIndex() {
   const [qrModalVisible, setQrModalVisible] = useState(false);
   const [qrString, setQrString] = useState('');
   const [selectedParcel, setSelectedParcel] = useState<Parcel | null>(null);
-  const [generatedOTP, setGeneratedOTP] = useState('');
   const [enteredOTP, setEnteredOTP] = useState('');
   const [errorMessage, setErrorMessage] = useState('');
   const [listHeight, setListHeight] = useState(0);
@@ -158,7 +158,7 @@ export default function GuardDashboardIndex() {
       resetAddForm();
       fetchParcels();
     } catch (error: any) {
-      Alert.alert('Error', error.response?.data?.detail || 'Failed to add parcel');
+      Alert.alert('Error', extractErrorMessage(error, 'Failed to add parcel'));
     }
   };
 
@@ -205,7 +205,7 @@ export default function GuardDashboardIndex() {
       fetchParcels();
     } catch (error: any) {
       console.error('Assign error:', error);
-      const errorMessage = error.response?.data?.detail || error.message || 'Failed to assign parcel';
+      const errorMessage = extractErrorMessage(error, 'Failed to assign parcel');
       Alert.alert('Error', errorMessage);
     } finally {
       setLoading(false);
@@ -218,15 +218,13 @@ export default function GuardDashboardIndex() {
         parcel_id: parcel._id,
       });
 
-      const otpForDebug = response.data?.otp;
-      setGeneratedOTP(typeof otpForDebug === 'string' ? otpForDebug : '');
       setSelectedParcel(parcel);
       setEnteredOTP('');
       setErrorMessage('');
       setOtpModalVisible(true);
       Alert.alert('OTP Sent', `OTP sent to ${response.data.email}`);
     } catch (error: any) {
-      Alert.alert('Error', error.response?.data?.detail || 'Failed to send OTP');
+      Alert.alert('Error', extractErrorMessage(error, 'Failed to send OTP'));
     }
   };
 
@@ -289,7 +287,7 @@ export default function GuardDashboardIndex() {
       setEditDescription('');
       fetchParcels();
     } catch (error: any) {
-      Alert.alert('Error', error.response?.data?.detail || 'Failed to update parcel');
+      Alert.alert('Error', extractErrorMessage(error, 'Failed to update parcel'));
     } finally {
       setLoading(false);
     }
@@ -314,10 +312,9 @@ export default function GuardDashboardIndex() {
       setOtpModalVisible(false);
       setSelectedParcel(null);
       setEnteredOTP('');
-      setGeneratedOTP('');
       fetchParcels();
     } catch (error: any) {
-      const msg = error.response?.data?.detail || 'Invalid OTP. Try again.';
+      const msg = extractErrorMessage(error, 'Invalid OTP. Try again.');
       setErrorMessage(msg);
     }
   };
