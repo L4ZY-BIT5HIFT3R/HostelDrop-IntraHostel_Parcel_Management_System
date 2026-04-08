@@ -5,19 +5,20 @@ import {
   StyleSheet,
   TextInput,
   TouchableOpacity,
-  SafeAreaView,
   KeyboardAvoidingView,
   Platform,
   Alert,
   ScrollView,
   ActivityIndicator,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useEffect, useState } from 'react';
 import api from '../utils/api';
 import { useAuthStore } from '../store/authStore';
 import { Colors, GlassCard, GlassInput } from '../utils/theme';
+import { extractErrorMessage } from '../utils/errorMessage';
 
 interface AutoDeleteStatus {
   enabled: boolean;
@@ -32,6 +33,7 @@ interface AutoDeleteStatus {
 export default function AdminPanel() {
   const router = useRouter();
   const { logout } = useAuthStore();
+  const [activeTab, setActiveTab] = useState<'USER_MANAGEMENT' | 'STUDENT_LIFECYCLE' | 'PARCEL_LIFECYCLE'>('USER_MANAGEMENT');
   const [selectedRole, setSelectedRole] = useState<'GUARD' | 'STUDENT'>('GUARD');
   const [hostelType, setHostelType] = useState<'BOYS' | 'GIRLS'>('BOYS');
   const [loading, setLoading] = useState(false);
@@ -54,6 +56,10 @@ export default function AdminPanel() {
   const [studentRollNumber, setStudentRollNumber] = useState('');
   const [studentEmail, setStudentEmail] = useState('');
   const [studentRoomNumber, setStudentRoomNumber] = useState('');
+  const [targetRollNumber, setTargetRollNumber] = useState('');
+  const [targetNewRoomNumber, setTargetNewRoomNumber] = useState('');
+  const [targetReason, setTargetReason] = useState('');
+  const [studentActionLoading, setStudentActionLoading] = useState<'TRANSFER' | 'DEACTIVATE' | null>(null);
 
   const resetForm = () => {
     setGuardName('');
@@ -85,7 +91,7 @@ export default function AdminPanel() {
         Alert.alert('Success', 'Guard added successfully');
         resetForm();
       } catch (error: any) {
-        Alert.alert('Error', error.response?.data?.detail || 'Failed to add guard');
+        Alert.alert('Error', extractErrorMessage(error, 'Failed to add guard'));
       } finally {
         setLoading(false);
       }
@@ -119,11 +125,71 @@ export default function AdminPanel() {
         Alert.alert('Success', 'Student added successfully');
         resetForm();
       } catch (error: any) {
-        Alert.alert('Error', error.response?.data?.detail || 'Failed to add student');
+        Alert.alert('Error', extractErrorMessage(error, 'Failed to add student'));
       } finally {
         setLoading(false);
       }
     }
+  };
+
+  const handleTransferStudentRoom = async () => {
+    if (!targetRollNumber.trim() || !targetNewRoomNumber.trim() || !targetReason.trim()) {
+      Alert.alert('Error', 'Roll number, new room number, and reason are required');
+      return;
+    }
+
+    setStudentActionLoading('TRANSFER');
+    try {
+      const response = await api.patch('/admin/student/room-transfer', {
+        roll_number: targetRollNumber.trim(),
+        hostel_type: hostelType,
+        new_room_number: targetNewRoomNumber.trim(),
+        reason: targetReason.trim(),
+      });
+      Alert.alert('Success', response.data?.message || 'Student room transferred successfully');
+      setTargetNewRoomNumber('');
+      setTargetReason('');
+    } catch (error: any) {
+      Alert.alert('Error', extractErrorMessage(error, 'Failed to transfer room'));
+    } finally {
+      setStudentActionLoading(null);
+    }
+  };
+
+  const handleDeactivateStudent = async () => {
+    if (!targetRollNumber.trim() || !targetReason.trim()) {
+      Alert.alert('Error', 'Roll number and reason are required');
+      return;
+    }
+
+    Alert.alert(
+      'Deactivate Student',
+      'This will mark the student inactive and remove current room assignment. Continue?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Deactivate',
+          style: 'destructive',
+          onPress: async () => {
+            setStudentActionLoading('DEACTIVATE');
+            try {
+              const response = await api.patch('/admin/student/deactivate', {
+                roll_number: targetRollNumber.trim(),
+                hostel_type: hostelType,
+                reason: targetReason.trim(),
+              });
+              Alert.alert('Success', response.data?.message || 'Student deactivated successfully');
+              setTargetNewRoomNumber('');
+              setTargetReason('');
+            } catch (error: any) {
+              Alert.alert('Error', extractErrorMessage(error, 'Failed to deactivate student'));
+            } finally {
+              setStudentActionLoading(null);
+            }
+          },
+        },
+      ]
+    );
   };
 
   const fetchDeliveredSummary = async (showError = true) => {
@@ -136,7 +202,7 @@ export default function AdminPanel() {
       });
     } catch (error: any) {
       if (showError) {
-        Alert.alert('Error', error.response?.data?.detail || 'Failed to load delivered summary');
+        Alert.alert('Error', extractErrorMessage(error, 'Failed to load delivered summary'));
       }
     } finally {
       setSummaryLoading(false);
@@ -150,7 +216,7 @@ export default function AdminPanel() {
       setAutoDeleteStatus(response.data);
     } catch (error: any) {
       if (showError) {
-        Alert.alert('Error', error.response?.data?.detail || 'Failed to load auto-delete status');
+        Alert.alert('Error', extractErrorMessage(error, 'Failed to load auto-delete status'));
       }
     } finally {
       setStatusLoading(false);
@@ -207,6 +273,13 @@ export default function AdminPanel() {
     Math.floor((autoDeleteStatus?.interval_seconds ?? 300) / 60)
   );
 
+  const activeTabLabel =
+    activeTab === 'USER_MANAGEMENT'
+      ? 'User Management'
+      : activeTab === 'STUDENT_LIFECYCLE'
+        ? 'Student Flow'
+        : 'Parcel Flow';
+
   const handleDeleteDeliveredParcels = async (targetHostel: 'BOYS' | 'GIRLS') => {
     Alert.alert(
       'Delete Delivered Parcels',
@@ -226,7 +299,7 @@ export default function AdminPanel() {
               Alert.alert('Success', `Deleted ${deletedCount} delivered parcel(s).`);
               refreshCleanupStatus(false);
             } catch (error: any) {
-              Alert.alert('Error', error.response?.data?.detail || 'Failed to delete delivered parcels');
+              Alert.alert('Error', extractErrorMessage(error, 'Failed to delete delivered parcels'));
             } finally {
               setDeletingDelivered(null);
             }
@@ -251,7 +324,7 @@ export default function AdminPanel() {
   };
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={styles.container} edges={['top']}>
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         style={styles.keyboardView}
@@ -259,7 +332,7 @@ export default function AdminPanel() {
         <View style={styles.header}>
           <View>
             <Text style={styles.headerTitle}>Admin Panel</Text>
-            <Text style={styles.headerSubtitle}>Add Guards and Students</Text>
+            <Text style={styles.headerSubtitle}>Administrative Controls • {activeTabLabel}</Text>
           </View>
           <TouchableOpacity style={styles.logoutButton} onPress={handleLogout}>
             <Ionicons name="log-out-outline" size={24} color={Colors.accentRed} />
@@ -267,59 +340,8 @@ export default function AdminPanel() {
         </View>
 
         <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
-          {/* Role Selection */}
           <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Select Role</Text>
-            <View style={styles.roleButtons}>
-              <TouchableOpacity
-                style={[
-                  styles.roleButton,
-                  selectedRole === 'GUARD' && styles.roleButtonActive,
-                ]}
-                onPress={() => setSelectedRole('GUARD')}
-              >
-                <Ionicons
-                  name="shield-checkmark"
-                  size={24}
-                  color={selectedRole === 'GUARD' ? Colors.accentBlue : Colors.textMuted}
-                />
-                <Text
-                  style={[
-                    styles.roleButtonText,
-                    selectedRole === 'GUARD' && styles.roleButtonTextActive,
-                  ]}
-                >
-                  Guard
-                </Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={[
-                  styles.roleButton,
-                  selectedRole === 'STUDENT' && styles.roleButtonActive,
-                ]}
-                onPress={() => setSelectedRole('STUDENT')}
-              >
-                <Ionicons
-                  name="person"
-                  size={24}
-                  color={selectedRole === 'STUDENT' ? Colors.accentGreen : Colors.textMuted}
-                />
-                <Text
-                  style={[
-                    styles.roleButtonText,
-                    selectedRole === 'STUDENT' && styles.roleButtonTextActive,
-                  ]}
-                >
-                  Student
-                </Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-
-          {/* Hostel Type Selection */}
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Hostel Type</Text>
+            <Text style={styles.sectionTitle}>Hostel Context</Text>
             <View style={styles.hostelButtons}>
               <TouchableOpacity
                 style={[
@@ -357,195 +379,365 @@ export default function AdminPanel() {
             </View>
           </View>
 
-          {/* Form Fields */}
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>
-              {selectedRole === 'GUARD' ? 'Guard Details' : 'Student Details'}
-            </Text>
+          {activeTab === 'USER_MANAGEMENT' && (
+            <>
+              <View style={styles.section}>
+                <Text style={styles.sectionTitle}>Select Role</Text>
+                <View style={styles.roleButtons}>
+                  <TouchableOpacity
+                    style={[
+                      styles.roleButton,
+                      selectedRole === 'GUARD' && styles.roleButtonActive,
+                    ]}
+                    onPress={() => setSelectedRole('GUARD')}
+                  >
+                    <Ionicons
+                      name="shield-checkmark"
+                      size={24}
+                      color={selectedRole === 'GUARD' ? Colors.accentBlue : Colors.textMuted}
+                    />
+                    <Text
+                      style={[
+                        styles.roleButtonText,
+                        selectedRole === 'GUARD' && styles.roleButtonTextActive,
+                      ]}
+                    >
+                      Guard
+                    </Text>
+                  </TouchableOpacity>
 
-            {selectedRole === 'GUARD' ? (
-              <View style={styles.form}>
-                <View style={styles.inputGroup}>
-                  <Text style={styles.inputLabel}>Name *</Text>
-                  <TextInput
-                    style={styles.textInput}
-                    placeholder="Enter guard name"
-                    value={guardName}
-                    onChangeText={setGuardName}
-                    placeholderTextColor={Colors.textMuted}
-                  />
-                </View>
-
-                <View style={styles.inputGroup}>
-                  <Text style={styles.inputLabel}>Username *</Text>
-                  <TextInput
-                    style={styles.textInput}
-                    placeholder="Enter username"
-                    value={guardUsername}
-                    onChangeText={setGuardUsername}
-                    autoCapitalize="none"
-                    placeholderTextColor={Colors.textMuted}
-                  />
-                </View>
-
-                <View style={styles.inputGroup}>
-                  <Text style={styles.inputLabel}>Password *</Text>
-                  <TextInput
-                    style={styles.textInput}
-                    placeholder="Enter password"
-                    value={guardPassword}
-                    onChangeText={setGuardPassword}
-                    secureTextEntry
-                    placeholderTextColor={Colors.textMuted}
-                  />
+                  <TouchableOpacity
+                    style={[
+                      styles.roleButton,
+                      selectedRole === 'STUDENT' && styles.roleButtonActive,
+                    ]}
+                    onPress={() => setSelectedRole('STUDENT')}
+                  >
+                    <Ionicons
+                      name="person"
+                      size={24}
+                      color={selectedRole === 'STUDENT' ? Colors.accentGreen : Colors.textMuted}
+                    />
+                    <Text
+                      style={[
+                        styles.roleButtonText,
+                        selectedRole === 'STUDENT' && styles.roleButtonTextActive,
+                      ]}
+                    >
+                      Student
+                    </Text>
+                  </TouchableOpacity>
                 </View>
               </View>
-            ) : (
+
+              <View style={styles.section}>
+                <Text style={styles.sectionTitle}>
+                  {selectedRole === 'GUARD' ? 'Guard Details' : 'Student Details'}
+                </Text>
+
+                {selectedRole === 'GUARD' ? (
+                  <View style={styles.form}>
+                    <View style={styles.inputGroup}>
+                      <Text style={styles.inputLabel}>Name *</Text>
+                      <TextInput
+                        style={styles.textInput}
+                        placeholder="Enter guard name"
+                        value={guardName}
+                        onChangeText={setGuardName}
+                        placeholderTextColor={Colors.textMuted}
+                      />
+                    </View>
+
+                    <View style={styles.inputGroup}>
+                      <Text style={styles.inputLabel}>Username *</Text>
+                      <TextInput
+                        style={styles.textInput}
+                        placeholder="Enter username"
+                        value={guardUsername}
+                        onChangeText={setGuardUsername}
+                        autoCapitalize="none"
+                        placeholderTextColor={Colors.textMuted}
+                      />
+                    </View>
+
+                    <View style={styles.inputGroup}>
+                      <Text style={styles.inputLabel}>Password *</Text>
+                      <TextInput
+                        style={styles.textInput}
+                        placeholder="Enter password"
+                        value={guardPassword}
+                        onChangeText={setGuardPassword}
+                        secureTextEntry
+                        placeholderTextColor={Colors.textMuted}
+                      />
+                    </View>
+                  </View>
+                ) : (
+                  <View style={styles.form}>
+                    <View style={styles.inputGroup}>
+                      <Text style={styles.inputLabel}>Name *</Text>
+                      <TextInput
+                        style={styles.textInput}
+                        placeholder="Enter student name"
+                        value={studentName}
+                        onChangeText={setStudentName}
+                        placeholderTextColor={Colors.textMuted}
+                      />
+                    </View>
+
+                    <View style={styles.inputGroup}>
+                      <Text style={styles.inputLabel}>Roll Number *</Text>
+                      <TextInput
+                        style={styles.textInput}
+                        placeholder="e.g., 2021001"
+                        value={studentRollNumber}
+                        onChangeText={setStudentRollNumber}
+                        placeholderTextColor={Colors.textMuted}
+                      />
+                    </View>
+
+                    <View style={styles.inputGroup}>
+                      <Text style={styles.inputLabel}>Email *</Text>
+                      <TextInput
+                        style={styles.textInput}
+                        placeholder="ab.c@iiitg.ac.in"
+                        value={studentEmail}
+                        onChangeText={setStudentEmail}
+                        autoCapitalize="none"
+                        keyboardType="email-address"
+                        placeholderTextColor={Colors.textMuted}
+                      />
+                    </View>
+
+                    <View style={styles.inputGroup}>
+                      <Text style={styles.inputLabel}>Room Number *</Text>
+                      <TextInput
+                        style={styles.textInput}
+                        placeholder="e.g., 101"
+                        value={studentRoomNumber}
+                        onChangeText={setStudentRoomNumber}
+                        placeholderTextColor={Colors.textMuted}
+                      />
+                    </View>
+                  </View>
+                )}
+
+                <TouchableOpacity
+                  style={[styles.submitButton, loading && styles.submitButtonDisabled]}
+                  onPress={handleAddUser}
+                  disabled={loading}
+                  activeOpacity={0.8}
+                >
+                  {loading ? (
+                    <ActivityIndicator color="#FFFFFF" />
+                  ) : (
+                    <Text style={styles.submitButtonText}>
+                      Add {selectedRole === 'GUARD' ? 'Guard' : 'Student'}
+                    </Text>
+                  )}
+                </TouchableOpacity>
+              </View>
+            </>
+          )}
+
+          {activeTab === 'STUDENT_LIFECYCLE' && (
+            <View style={styles.section}>
+              <Text style={styles.sectionTitle}>Student Room Lifecycle</Text>
+              <Text style={styles.sectionHint}>
+                Securely transfer room assignment or deactivate students who left the hostel.
+              </Text>
+
               <View style={styles.form}>
                 <View style={styles.inputGroup}>
-                  <Text style={styles.inputLabel}>Name *</Text>
-                  <TextInput
-                    style={styles.textInput}
-                    placeholder="Enter student name"
-                    value={studentName}
-                    onChangeText={setStudentName}
-                    placeholderTextColor={Colors.textMuted}
-                  />
-                </View>
-
-                <View style={styles.inputGroup}>
-                  <Text style={styles.inputLabel}>Roll Number *</Text>
+                  <Text style={styles.inputLabel}>Student Roll Number *</Text>
                   <TextInput
                     style={styles.textInput}
                     placeholder="e.g., 2021001"
-                    value={studentRollNumber}
-                    onChangeText={setStudentRollNumber}
+                    value={targetRollNumber}
+                    onChangeText={setTargetRollNumber}
+                    autoCapitalize="characters"
                     placeholderTextColor={Colors.textMuted}
                   />
                 </View>
 
                 <View style={styles.inputGroup}>
-                  <Text style={styles.inputLabel}>Email *</Text>
+                  <Text style={styles.inputLabel}>New Room Number (for transfer)</Text>
                   <TextInput
                     style={styles.textInput}
-                    placeholder="ab.c@iiitg.ac.in"
-                    value={studentEmail}
-                    onChangeText={setStudentEmail}
-                    autoCapitalize="none"
-                    keyboardType="email-address"
+                    placeholder="e.g., 205"
+                    value={targetNewRoomNumber}
+                    onChangeText={setTargetNewRoomNumber}
                     placeholderTextColor={Colors.textMuted}
                   />
                 </View>
 
                 <View style={styles.inputGroup}>
-                  <Text style={styles.inputLabel}>Room Number *</Text>
+                  <Text style={styles.inputLabel}>Reason *</Text>
                   <TextInput
-                    style={styles.textInput}
-                    placeholder="e.g., 101"
-                    value={studentRoomNumber}
-                    onChangeText={setStudentRoomNumber}
+                    style={[styles.textInput, styles.reasonInput]}
+                    placeholder="e.g., Hostel relocation due to room reallocation"
+                    value={targetReason}
+                    onChangeText={setTargetReason}
+                    multiline
+                    numberOfLines={3}
                     placeholderTextColor={Colors.textMuted}
                   />
                 </View>
               </View>
-            )}
 
-            <TouchableOpacity
-              style={[styles.submitButton, loading && styles.submitButtonDisabled]}
-              onPress={handleAddUser}
-              disabled={loading}
-              activeOpacity={0.8}
-            >
-              {loading ? (
-                <ActivityIndicator color="#FFFFFF" />
-              ) : (
-                <Text style={styles.submitButtonText}>
-                  Add {selectedRole === 'GUARD' ? 'Guard' : 'Student'}
-                </Text>
-              )}
-            </TouchableOpacity>
-          </View>
+              <View style={styles.actionRow}>
+                <TouchableOpacity
+                  style={[styles.submitButton, styles.actionButton, studentActionLoading === 'TRANSFER' && styles.submitButtonDisabled]}
+                  onPress={handleTransferStudentRoom}
+                  disabled={studentActionLoading !== null}
+                  activeOpacity={0.8}
+                >
+                  {studentActionLoading === 'TRANSFER' ? (
+                    <ActivityIndicator color="#FFFFFF" />
+                  ) : (
+                    <Text style={styles.submitButtonText}>Transfer Room</Text>
+                  )}
+                </TouchableOpacity>
 
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Delivered Parcels</Text>
-            <Text style={styles.sectionHint}>
-              Manage delivered parcels by hostel type.
-            </Text>
-            <View style={styles.autoDeleteCard}>
-              <TouchableOpacity
-                style={styles.refreshButton}
-                onPress={() => refreshCleanupStatus()}
-                disabled={summaryLoading || statusLoading}
-                activeOpacity={0.8}
-              >
-                {summaryLoading || statusLoading ? (
-                  <ActivityIndicator size="small" color={Colors.accentRed} />
-                ) : (
-                  <Ionicons name="refresh" size={20} color={Colors.accentRed} />
-                )}
-              </TouchableOpacity>
-                <View style={styles.autoDeleteHeader}>
-                  <View style={styles.autoDeleteTextBlock}>
-                    <Text style={styles.autoDeleteTitle}>Automatic Cleanup Timer</Text>
-                    <Text style={styles.autoDeleteSubtitle}>
-                      Each delivered parcel is deleted {intervalMinutes} minutes after delivery.
-                    </Text>
+                <TouchableOpacity
+                  style={[styles.dangerButton, styles.actionButton, studentActionLoading === 'DEACTIVATE' && styles.submitButtonDisabled]}
+                  onPress={handleDeactivateStudent}
+                  disabled={studentActionLoading !== null}
+                  activeOpacity={0.8}
+                >
+                  {studentActionLoading === 'DEACTIVATE' ? (
+                    <ActivityIndicator color="#FFFFFF" />
+                  ) : (
+                    <Text style={styles.dangerButtonText}>Mark Left Hostel</Text>
+                  )}
+                </TouchableOpacity>
+              </View>
+            </View>
+          )}
+
+          {activeTab === 'PARCEL_LIFECYCLE' && (
+            <View style={styles.section}>
+              <Text style={styles.sectionTitle}>Parcel Lifecycle Tracking</Text>
+              <Text style={styles.sectionHint}>
+                Monitor delivered counts, cleanup timer, and force-delete delivered parcels by hostel.
+              </Text>
+              <View style={styles.autoDeleteCard}>
+                <TouchableOpacity
+                  style={styles.refreshButton}
+                  onPress={() => refreshCleanupStatus()}
+                  disabled={summaryLoading || statusLoading}
+                  activeOpacity={0.8}
+                >
+                  {summaryLoading || statusLoading ? (
+                    <ActivityIndicator size="small" color={Colors.accentRed} />
+                  ) : (
+                    <Ionicons name="refresh" size={20} color={Colors.accentRed} />
+                  )}
+                </TouchableOpacity>
+                  <View style={styles.autoDeleteHeader}>
+                    <View style={styles.autoDeleteTextBlock}>
+                      <Text style={styles.autoDeleteTitle}>Automatic Cleanup Timer</Text>
+                      <Text style={styles.autoDeleteSubtitle}>
+                        Each delivered parcel is deleted {intervalMinutes} minutes after delivery.
+                      </Text>
+                    </View>
                   </View>
+                <Text style={styles.autoDeleteCountdown}>
+                  {statusLoading && !autoDeleteStatus ? 'Loading...' : formatCountdown(autoDeleteStatus?.remaining_seconds)}
+                </Text>
+                <Text style={styles.autoDeleteMeta}>
+                  Last cleanup deleted {autoDeleteStatus?.last_deleted_count ?? 0} parcel(s).
+                </Text>
+              </View>
+              <View style={styles.summaryRow}>
+                <View style={styles.summaryCard}>
+                  <Text style={styles.summaryTitle}>Boys Hostel</Text>
+                  <Text style={styles.summaryCount}>
+                    {summaryLoading ? '...' : deliveredSummary.boys}
+                  </Text>
+                  <TouchableOpacity
+                    style={[
+                      styles.dangerButton,
+                      deletingDelivered === 'BOYS' && styles.submitButtonDisabled,
+                    ]}
+                    onPress={() => handleDeleteDeliveredParcels('BOYS')}
+                    disabled={deletingDelivered === 'BOYS'}
+                    activeOpacity={0.8}
+                  >
+                    {deletingDelivered === 'BOYS' ? (
+                      <ActivityIndicator color="#FFFFFF" />
+                    ) : (
+                      <Text style={styles.dangerButtonText}>Delete Delivered</Text>
+                    )}
+                  </TouchableOpacity>
                 </View>
-              <Text style={styles.autoDeleteCountdown}>
-                {statusLoading && !autoDeleteStatus ? 'Loading...' : formatCountdown(autoDeleteStatus?.remaining_seconds)}
-              </Text>
-              <Text style={styles.autoDeleteMeta}>
-                Last cleanup deleted {autoDeleteStatus?.last_deleted_count ?? 0} parcel(s).
-              </Text>
-            </View>
-            <View style={styles.summaryRow}>
-              <View style={styles.summaryCard}>
-                <Text style={styles.summaryTitle}>Boys Hostel</Text>
-                <Text style={styles.summaryCount}>
-                  {summaryLoading ? '...' : deliveredSummary.boys}
-                </Text>
-                <TouchableOpacity
-                  style={[
-                    styles.dangerButton,
-                    deletingDelivered === 'BOYS' && styles.submitButtonDisabled,
-                  ]}
-                  onPress={() => handleDeleteDeliveredParcels('BOYS')}
-                  disabled={deletingDelivered === 'BOYS'}
-                  activeOpacity={0.8}
-                >
-                  {deletingDelivered === 'BOYS' ? (
-                    <ActivityIndicator color="#FFFFFF" />
-                  ) : (
-                    <Text style={styles.dangerButtonText}>Delete Delivered</Text>
-                  )}
-                </TouchableOpacity>
-              </View>
 
-              <View style={styles.summaryCard}>
-                <Text style={styles.summaryTitle}>Girls Hostel</Text>
-                <Text style={styles.summaryCount}>
-                  {summaryLoading ? '...' : deliveredSummary.girls}
-                </Text>
-                <TouchableOpacity
-                  style={[
-                    styles.dangerButton,
-                    deletingDelivered === 'GIRLS' && styles.submitButtonDisabled,
-                  ]}
-                  onPress={() => handleDeleteDeliveredParcels('GIRLS')}
-                  disabled={deletingDelivered === 'GIRLS'}
-                  activeOpacity={0.8}
-                >
-                  {deletingDelivered === 'GIRLS' ? (
-                    <ActivityIndicator color="#FFFFFF" />
-                  ) : (
-                    <Text style={styles.dangerButtonText}>Delete Delivered</Text>
-                  )}
-                </TouchableOpacity>
+                <View style={styles.summaryCard}>
+                  <Text style={styles.summaryTitle}>Girls Hostel</Text>
+                  <Text style={styles.summaryCount}>
+                    {summaryLoading ? '...' : deliveredSummary.girls}
+                  </Text>
+                  <TouchableOpacity
+                    style={[
+                      styles.dangerButton,
+                      deletingDelivered === 'GIRLS' && styles.submitButtonDisabled,
+                    ]}
+                    onPress={() => handleDeleteDeliveredParcels('GIRLS')}
+                    disabled={deletingDelivered === 'GIRLS'}
+                    activeOpacity={0.8}
+                  >
+                    {deletingDelivered === 'GIRLS' ? (
+                      <ActivityIndicator color="#FFFFFF" />
+                    ) : (
+                      <Text style={styles.dangerButtonText}>Delete Delivered</Text>
+                    )}
+                  </TouchableOpacity>
+                </View>
               </View>
             </View>
-          </View>
+          )}
         </ScrollView>
+
+        <View style={styles.bottomTaskbar}>
+          <TouchableOpacity
+            style={[styles.bottomTaskButton, activeTab === 'USER_MANAGEMENT' && styles.bottomTaskButtonActive]}
+            onPress={() => setActiveTab('USER_MANAGEMENT')}
+            activeOpacity={0.8}
+            accessibilityLabel="User management tab"
+          >
+            <Ionicons
+              name="person-add-outline"
+              size={22}
+              color={activeTab === 'USER_MANAGEMENT' ? Colors.accent : Colors.textMuted}
+            />
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[styles.bottomTaskButton, activeTab === 'STUDENT_LIFECYCLE' && styles.bottomTaskButtonActive]}
+            onPress={() => setActiveTab('STUDENT_LIFECYCLE')}
+            activeOpacity={0.8}
+            accessibilityLabel="Student lifecycle tab"
+          >
+            <Ionicons
+              name="git-compare-outline"
+              size={22}
+              color={activeTab === 'STUDENT_LIFECYCLE' ? Colors.accent : Colors.textMuted}
+            />
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[styles.bottomTaskButton, activeTab === 'PARCEL_LIFECYCLE' && styles.bottomTaskButtonActive]}
+            onPress={() => setActiveTab('PARCEL_LIFECYCLE')}
+            activeOpacity={0.8}
+            accessibilityLabel="Parcel lifecycle tab"
+          >
+            <Ionicons
+              name="cube-outline"
+              size={22}
+              color={activeTab === 'PARCEL_LIFECYCLE' ? Colors.accent : Colors.textMuted}
+            />
+          </TouchableOpacity>
+        </View>
       </KeyboardAvoidingView>
     </SafeAreaView>
   );
@@ -585,6 +777,30 @@ const styles = StyleSheet.create({
   content: {
     flex: 1,
     padding: 24,
+  },
+  bottomTaskbar: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    alignItems: 'center',
+    paddingHorizontal: 24,
+    paddingVertical: 10,
+    backgroundColor: Colors.bg,
+    borderTopWidth: 1,
+    borderTopColor: Colors.surfaceBorder,
+  },
+  bottomTaskButton: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    borderWidth: 1,
+    borderColor: Colors.surfaceBorder,
+    backgroundColor: Colors.surface,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  bottomTaskButtonActive: {
+    borderColor: Colors.accent,
+    backgroundColor: Colors.accentDim,
   },
   section: {
     marginBottom: 32,
@@ -746,6 +962,19 @@ const styles = StyleSheet.create({
     paddingVertical: 14,
     fontSize: 16,
     color: Colors.textPrimary,
+  },
+  reasonInput: {
+    minHeight: 88,
+    textAlignVertical: 'top',
+  },
+  actionRow: {
+    flexDirection: 'row',
+    gap: 12,
+    marginTop: 10,
+  },
+  actionButton: {
+    flex: 1,
+    marginTop: 0,
   },
   submitButton: {
     backgroundColor: Colors.accent,
