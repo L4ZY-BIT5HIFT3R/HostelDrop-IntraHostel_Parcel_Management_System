@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import {
   View,
   Text,
@@ -14,7 +14,6 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { useEffect, useState } from 'react';
 import api from '../utils/api';
 import { useAuthStore } from '../store/authStore';
 import { Colors, GlassCard, GlassInput } from '../utils/theme';
@@ -192,7 +191,7 @@ export default function AdminPanel() {
     );
   };
 
-  const fetchDeliveredSummary = async (showError = true) => {
+  const fetchDeliveredSummary = useCallback(async (showError = true) => {
     setSummaryLoading(true);
     try {
       const response = await api.get('/admin/parcels/delivered/summary');
@@ -207,9 +206,9 @@ export default function AdminPanel() {
     } finally {
       setSummaryLoading(false);
     }
-  };
+  }, []);
 
-  const fetchAutoDeleteStatus = async (showError = true) => {
+  const fetchAutoDeleteStatus = useCallback(async (showError = true) => {
     setStatusLoading(true);
     try {
       const response = await api.get('/admin/parcels/delivered/auto-delete-status');
@@ -221,17 +220,17 @@ export default function AdminPanel() {
     } finally {
       setStatusLoading(false);
     }
-  };
+  }, []);
 
-  const refreshCleanupStatus = async (showError = true) => {
+  const refreshCleanupStatus = useCallback(async (showError = true) => {
     await Promise.all([
       fetchDeliveredSummary(showError),
       fetchAutoDeleteStatus(showError),
     ]);
-  };
+  }, [fetchAutoDeleteStatus, fetchDeliveredSummary]);
 
   useEffect(() => {
-    refreshCleanupStatus();
+    void refreshCleanupStatus();
 
     const countdownInterval = setInterval(() => {
       setAutoDeleteStatus((current) => {
@@ -248,7 +247,7 @@ export default function AdminPanel() {
     return () => {
       clearInterval(countdownInterval);
     };
-  }, []);
+  }, [refreshCleanupStatus]);
 
   useEffect(() => {
     if (
@@ -258,8 +257,8 @@ export default function AdminPanel() {
     ) {
       return;
     }
-    refreshCleanupStatus(false);
-  }, [autoDeleteStatus?.remaining_seconds]);
+    void refreshCleanupStatus(false);
+  }, [autoDeleteStatus, refreshCleanupStatus]);
 
   const formatCountdown = (remainingSeconds: number | undefined) => {
     const safeSeconds = Math.max(0, remainingSeconds ?? 0);
