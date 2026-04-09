@@ -49,6 +49,7 @@ export default function AdminPanel() {
   const [guardName, setGuardName] = useState('');
   const [guardUsername, setGuardUsername] = useState('');
   const [guardPassword, setGuardPassword] = useState('');
+  const [showGuardPassword, setShowGuardPassword] = useState(false);
 
   // Student fields
   const [studentName, setStudentName] = useState('');
@@ -283,15 +284,21 @@ export default function AdminPanel() {
 
   const formatCountdown = (remainingSeconds: number | undefined) => {
     const safeSeconds = Math.max(0, remainingSeconds ?? 0);
-    const minutes = Math.floor(safeSeconds / 60);
+    const days = Math.floor(safeSeconds / 86400);
+    const hours = Math.floor((safeSeconds % 86400) / 3600);
+    const minutes = Math.floor((safeSeconds % 3600) / 60);
     const seconds = safeSeconds % 60;
-    return `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+    return `${days}:${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
   };
 
-  const intervalMinutes = Math.max(
-    1,
-    Math.floor((autoDeleteStatus?.interval_seconds ?? 300) / 60)
-  );
+  const formatInterval = (intervalSeconds: number | undefined) => {
+    const safeSeconds = Math.max(1, intervalSeconds ?? 300);
+    const days = Math.floor(safeSeconds / 86400);
+    const hours = Math.floor((safeSeconds % 86400) / 3600);
+    const minutes = Math.floor((safeSeconds % 3600) / 60);
+    const seconds = safeSeconds % 60;
+    return `${days}:${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+  };
 
   const activeTabLabel =
     activeTab === 'USER_MANAGEMENT'
@@ -489,9 +496,16 @@ export default function AdminPanel() {
                         placeholder="Enter password"
                         value={guardPassword}
                         onChangeText={setGuardPassword}
-                        secureTextEntry
+                        secureTextEntry={!showGuardPassword}
                         placeholderTextColor={Colors.textMuted}
                       />
+                      <TouchableOpacity onPress={() => setShowGuardPassword((prev) => !prev)} style={styles.eyeIcon}>
+                        <Ionicons
+                          name={showGuardPassword ? 'eye-off-outline' : 'eye-outline'}
+                          size={20}
+                          color={Colors.textMuted}
+                        />
+                      </TouchableOpacity>
                     </View>
                   </View>
                 ) : (
@@ -660,7 +674,7 @@ export default function AdminPanel() {
                     <View style={styles.autoDeleteTextBlock}>
                       <Text style={styles.autoDeleteTitle}>Automatic Cleanup Timer</Text>
                       <Text style={styles.autoDeleteSubtitle}>
-                        Each delivered parcel is deleted {intervalMinutes} minutes after delivery.
+                        Each delivered parcel is deleted after {formatInterval(autoDeleteStatus?.interval_seconds)} (days:hr:min:sec).
                       </Text>
                     </View>
                   </View>
@@ -1006,10 +1020,14 @@ const styles = StyleSheet.create({
   },
   textInput: {
     ...GlassInput,
-    paddingHorizontal: 16,
+    paddingHorizontal: 14,
     paddingVertical: 14,
     fontSize: 16,
     color: Colors.textPrimary,
+  },
+  eyeIcon: {
+    padding: 6,
+    alignSelf: 'center',
   },
   reasonInput: {
     minHeight: 88,

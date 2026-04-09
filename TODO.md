@@ -1,4 +1,0 @@
-- [x] Add token normalization utility and apply in API interceptor
-- [x] Normalize token during auth login persistence
-- [x] Replace noisy parcel fetch console.error with user-safe handling
-- [ ] Verify no visible console errors for handled auth/fetch failures
