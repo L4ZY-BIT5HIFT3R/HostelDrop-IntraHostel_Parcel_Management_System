@@ -60,6 +60,33 @@ export default function AdminPanel() {
   const [targetReason, setTargetReason] = useState('');
   const [studentActionLoading, setStudentActionLoading] = useState<'TRANSFER' | 'DEACTIVATE' | null>(null);
 
+  const confirmAction = (
+    title: string,
+    message: string,
+    confirmText: string,
+    onConfirm: () => void | Promise<void>
+  ) => {
+    if (Platform.OS === 'web') {
+      const confirmFn = (globalThis as { confirm?: (message?: string) => boolean }).confirm;
+      const confirmed = typeof confirmFn === 'function' ? confirmFn(`${title}\n\n${message}`) : true;
+      if (confirmed) {
+        void onConfirm();
+      }
+      return;
+    }
+
+    Alert.alert(title, message, [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: confirmText,
+        style: 'destructive',
+        onPress: () => {
+          void onConfirm();
+        },
+      },
+    ]);
+  };
+
   const resetForm = () => {
     setGuardName('');
     setGuardUsername('');
@@ -161,33 +188,27 @@ export default function AdminPanel() {
       return;
     }
 
-    Alert.alert(
+    confirmAction(
       'Deactivate Student',
       'This will mark the student inactive and remove current room assignment. Continue?',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Deactivate',
-          style: 'destructive',
-          onPress: async () => {
-            setStudentActionLoading('DEACTIVATE');
-            try {
-              const response = await api.patch('/admin/student/deactivate', {
-                roll_number: targetRollNumber.trim(),
-                hostel_type: hostelType,
-                reason: targetReason.trim(),
-              });
-              Alert.alert('Success', response.data?.message || 'Student deactivated successfully');
-              setTargetNewRoomNumber('');
-              setTargetReason('');
-            } catch (error: any) {
-              Alert.alert('Error', extractErrorMessage(error, 'Failed to deactivate student'));
-            } finally {
-              setStudentActionLoading(null);
-            }
-          },
-        },
-      ]
+      'Deactivate',
+      async () => {
+        setStudentActionLoading('DEACTIVATE');
+        try {
+          const response = await api.patch('/admin/student/deactivate', {
+            roll_number: targetRollNumber.trim(),
+            hostel_type: hostelType,
+            reason: targetReason.trim(),
+          });
+          Alert.alert('Success', response.data?.message || 'Student deactivated successfully');
+          setTargetNewRoomNumber('');
+          setTargetReason('');
+        } catch (error: any) {
+          Alert.alert('Error', extractErrorMessage(error, 'Failed to deactivate student'));
+        } finally {
+          setStudentActionLoading(null);
+        }
+      }
     );
   };
 
@@ -280,46 +301,42 @@ export default function AdminPanel() {
         : 'Parcel Flow';
 
   const handleDeleteDeliveredParcels = async (targetHostel: 'BOYS' | 'GIRLS') => {
-    Alert.alert(
+    confirmAction(
       'Delete Delivered Parcels',
       `This will permanently delete delivered parcels for the ${targetHostel} hostel. Continue?`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Delete',
-          style: 'destructive',
-          onPress: async () => {
-            setDeletingDelivered(targetHostel);
-            try {
-              const response = await api.delete('/admin/parcels/delivered', {
-                params: { hostel_type: targetHostel },
-              });
-              const deletedCount = response.data?.deleted_count ?? 0;
-              Alert.alert('Success', `Deleted ${deletedCount} delivered parcel(s).`);
-              refreshCleanupStatus(false);
-            } catch (error: any) {
-              Alert.alert('Error', extractErrorMessage(error, 'Failed to delete delivered parcels'));
-            } finally {
-              setDeletingDelivered(null);
-            }
-          },
-        },
-      ]
+      'Delete',
+      async () => {
+        setDeletingDelivered(targetHostel);
+        try {
+          const response = await api.delete('/admin/parcels/delivered', {
+            params: { hostel_type: targetHostel },
+          });
+          const deletedCount = response.data?.deleted_count ?? 0;
+          Alert.alert('Success', `Deleted ${deletedCount} delivered parcel(s).`);
+          refreshCleanupStatus(false);
+        } catch (error: any) {
+          Alert.alert('Error', extractErrorMessage(error, 'Failed to delete delivered parcels'));
+        } finally {
+          setDeletingDelivered(null);
+        }
+      }
     );
   };
 
+  const handleBackToCommonDashboard = () => {
+    router.replace('/role-selection');
+  };
+
   const handleLogout = async () => {
-    Alert.alert('Logout', 'Are you sure you want to logout?', [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Logout',
-        style: 'destructive',
-        onPress: async () => {
-          await logout();
-          router.replace('/');
-        },
-      },
-    ]);
+    confirmAction(
+      'Logout',
+      'Are you sure you want to logout?',
+      'Logout',
+      async () => {
+        await logout();
+        router.replace('/role-selection');
+      }
+    );
   };
 
   return (
@@ -329,13 +346,19 @@ export default function AdminPanel() {
         style={styles.keyboardView}
       >
         <View style={styles.header}>
-          <View>
+          <View style={styles.headerTitleBlock}>
+            <TouchableOpacity style={styles.backButton} onPress={handleBackToCommonDashboard}>
+              <Ionicons name="arrow-back" size={20} color={Colors.textPrimary} />
+              <Text style={styles.backButtonText}></Text>
+            </TouchableOpacity>
             <Text style={styles.headerTitle}>Admin Panel</Text>
             <Text style={styles.headerSubtitle}>Administrative Controls • {activeTabLabel}</Text>
           </View>
-          <TouchableOpacity style={styles.logoutButton} onPress={handleLogout}>
-            <Ionicons name="log-out-outline" size={24} color={Colors.accentRed} />
-          </TouchableOpacity>
+          <View style={styles.headerActions}>
+            <TouchableOpacity style={styles.logoutButton} onPress={handleLogout}>
+              <Ionicons name="log-out-outline" size={24} color={Colors.accentRed} />
+            </TouchableOpacity>
+          </View>
         </View>
 
         <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
@@ -760,6 +783,28 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: Colors.surfaceBorder,
   },
+  headerTitleBlock: {
+    flex: 1,
+    marginRight: 12,
+  },
+  backButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    borderRadius: 10,
+    backgroundColor: Colors.surface,
+    borderWidth: 1,
+    borderColor: Colors.surfaceBorder,
+    marginBottom: 10,
+    gap: 6,
+  },
+  backButtonText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: Colors.textPrimary,
+  },
   headerTitle: {
     fontSize: 24,
     fontWeight: 'bold',
@@ -769,6 +814,10 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: Colors.textSecondary,
     marginTop: 4,
+  },
+  headerActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
   },
   logoutButton: {
     padding: 8,

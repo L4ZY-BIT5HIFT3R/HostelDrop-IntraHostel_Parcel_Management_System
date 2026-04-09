@@ -17,7 +17,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import api from '../../utils/api';
 import { useAuthStore } from '../../store/authStore';
-import { Colors, GlassCard, GlassInput } from '../../utils/theme';
+import { Colors, MinimalCard, MinimalInput } from '../../utils/theme';
 import ErrorPopup from '../../components/ErrorPopup';
 import { extractErrorMessage } from '../../utils/errorMessage';
 
@@ -254,7 +254,7 @@ export default function Profile() {
           {/* Avatar & Name */}
           <View style={styles.avatarSection}>
             <View style={styles.avatar}>
-              <Ionicons name="person" size={48} color={Colors.accentGreen} />
+              <Ionicons name="person" size={48} color={Colors.textPrimary} />
             </View>
             <Text style={styles.profileName}>{profile?.name || user?.name || 'Student'}</Text>
             <Text style={styles.profileRoll}>{profile?.roll_number || user?.roll_number || ''}</Text>
@@ -349,7 +349,7 @@ export default function Profile() {
                   style={styles.forgotLink}
                   onPress={handleForgotFromProfile}
                 >
-                  <Text style={styles.forgotLinkText}>Don't remember current password? Reset via OTP</Text>
+                  <Text style={styles.forgotLinkText}>Do not remember current password? Reset via OTP</Text>
                 </TouchableOpacity>
 
                 <TouchableOpacity
@@ -527,11 +527,11 @@ const styles = StyleSheet.create({
     width: 96,
     height: 96,
     borderRadius: 48,
-    backgroundColor: Colors.accentGreenDim,
+    backgroundColor: Colors.surface,
     alignItems: 'center',
     justifyContent: 'center',
-    borderWidth: 2,
-    borderColor: Colors.accentGreen,
+    borderWidth: 1,
+    borderColor: Colors.surfaceBorder,
   },
   profileName: {
     fontSize: 22,
@@ -546,7 +546,7 @@ const styles = StyleSheet.create({
   },
   // Info card
   infoCard: {
-    ...GlassCard,
+    ...MinimalCard,
     padding: 20,
     gap: 16,
   },
@@ -565,7 +565,9 @@ const styles = StyleSheet.create({
     width: 40,
     height: 40,
     borderRadius: 12,
-    backgroundColor: Colors.accentDim,
+    backgroundColor: Colors.surface,
+    borderWidth: 1,
+    borderColor: Colors.surfaceBorder,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -612,7 +614,7 @@ const styles = StyleSheet.create({
   inputWrapper: {
     flexDirection: 'row',
     alignItems: 'center',
-    ...GlassInput,
+    ...MinimalInput,
     paddingHorizontal: 14,
   },
   inputIcon: {
@@ -625,7 +627,7 @@ const styles = StyleSheet.create({
     color: Colors.textPrimary,
   },
   saveButton: {
-    backgroundColor: Colors.accentGreen,
+    backgroundColor: Colors.accent,
     height: 48,
     borderRadius: 12,
     alignItems: 'center',
@@ -657,7 +659,7 @@ const styles = StyleSheet.create({
   cancelLinkText: {
     fontSize: 14,
     fontWeight: '600',
-    color: Colors.accentRed,
+    color: Colors.textSecondary,
   },
   // Modal styles
   modalOverlay: {
@@ -692,7 +694,7 @@ const styles = StyleSheet.create({
   },
   fpEmailHint: {
     fontSize: 13,
-    color: Colors.accentGreen,
+    color: Colors.textSecondary,
     fontWeight: '500',
     textAlign: 'center',
   },

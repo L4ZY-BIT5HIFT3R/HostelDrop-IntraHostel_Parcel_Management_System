@@ -3,6 +3,11 @@ import Constants from 'expo-constants';
 import { Platform } from 'react-native';
 import { clearAuthSession, getAuthToken } from './sessionStorage';
 
+const normalizeToken = (token?: string | null) => {
+  if (!token) return '';
+  return token.replace(/^Bearer\s+/i, '').trim();
+};
+
 const getBaseUrl = () => {
   const envUrl = process.env.EXPO_PUBLIC_BACKEND_URL?.trim();
   if (envUrl && envUrl.toLowerCase() !== 'auto') {
@@ -35,7 +40,7 @@ const api = axios.create({
 // Request interceptor to add auth token
 api.interceptors.request.use(
   async (config) => {
-    const token = await getAuthToken();
+    const token = normalizeToken(await getAuthToken());
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
     }

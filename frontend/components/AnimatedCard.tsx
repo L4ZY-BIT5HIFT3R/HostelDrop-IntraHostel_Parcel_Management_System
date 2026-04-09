@@ -17,9 +17,28 @@ type Props = {
 };
 
 export default function AnimatedCard({ children, index = 0, activeIndex, scrollY, style }: Props) {
+  const fadeAnim = React.useRef(new Animated.Value(0)).current;
+  React.useEffect(() => {
+    if (scrollY) {
+      return;
+    }
+
+    fadeAnim.setValue(0);
+    Animated.timing(fadeAnim, {
+      toValue: 1,
+      duration: 400 + index * 100,
+      useNativeDriver: true,
+    }).start();
+  }, [fadeAnim, index, scrollY]);
+
   if (!scrollY) {
     return (
-      <Animated.View style={style}>
+      <Animated.View 
+        style={[
+          { opacity: fadeAnim },
+          style
+        ]}
+      >
         {children}
       </Animated.View>
     );
@@ -84,7 +103,7 @@ export default function AnimatedCard({ children, index = 0, activeIndex, scrollY
           left: 0,
           right: 0,
           bottom: 0,
-          borderRadius: 24,
+          borderRadius: 16,
           overflow: 'hidden',
           opacity: activeIndex === index ? 0 : blurOpacity,
         }}
@@ -93,13 +112,13 @@ export default function AnimatedCard({ children, index = 0, activeIndex, scrollY
           <Animated.View
             style={{
               flex: 1,
-              backgroundColor: 'rgba(7, 9, 18, 0.22)',
+            backgroundColor: 'rgba(247, 247, 248, 0.8)',
             }}
           />
         ) : (
           <BlurView
             intensity={60}
-            tint="dark"
+            tint="light"
             style={{ flex: 1 }}
           />
         )}
@@ -111,8 +130,8 @@ export default function AnimatedCard({ children, index = 0, activeIndex, scrollY
             right: 0,
             bottom: 0,
             backgroundColor: Platform.OS === 'android'
-              ? 'rgba(7, 9, 18, 0.08)'
-              : 'rgba(7, 9, 18, 0.16)',
+              ? 'rgba(26, 26, 26, 0.04)'
+              : 'rgba(26, 26, 26, 0.06)',
           }}
         />
       </Animated.View>

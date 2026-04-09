@@ -1,46 +1,104 @@
-// ===== Glassmorphism Dark Theme =====
+// Minimal Black & White Theme for HostelDrop
+// Clean, modern design with generous whitespace and subtle gradients
 
 export const Colors = {
-  bg: '#0F0F1A',
-  surface: 'rgba(255,255,255,0.06)',
-  surfaceBorder: 'rgba(255,255,255,0.12)',
-  surfaceHover: 'rgba(255,255,255,0.10)',
-  inputBg: 'rgba(255,255,255,0.08)',
-  inputBorder: 'rgba(255,255,255,0.15)',
-  textPrimary: '#F1F5F9',
-  textSecondary: '#94A3B8',
-  textMuted: '#64748B',
-  accent: '#818CF8',
-  accentDim: 'rgba(129,140,248,0.15)',
-  accentGreen: '#34D399',
-  accentGreenDim: 'rgba(52,211,153,0.15)',
-  accentBlue: '#60A5FA',
-  accentBlueDim: 'rgba(96,165,250,0.15)',
-  accentRed: '#F87171',
-  accentRedDim: 'rgba(248,113,113,0.15)',
-  accentAmber: '#FBBF24',
-  accentAmberDim: 'rgba(251,191,36,0.15)',
-  tabBar: 'rgba(15,15,26,0.95)',
-  tabBarBorder: 'rgba(255,255,255,0.08)',
-  overlay: 'rgba(0,0,0,0.6)',
-  pending: '#818CF8',
-  pendingBg: 'rgba(129,140,248,0.15)',
-  unassigned: '#F87171',
-  unassignedBg: 'rgba(248,113,113,0.15)',
-  delivered: '#34D399',
-  deliveredBg: 'rgba(52,211,153,0.15)',
+  // Core palette - pure white/black with soft grays
+  bg: '#FFFFFF',                    // Pure white background
+  surface: '#F7F7F8',               // Soft off-white card surface
+  surfaceBorder: '#EBEBED',         // Subtle gray border
+  surfaceHover: '#F0F0F1',          // Lighter hover state
+  
+  // Text hierarchy
+  textPrimary: '#111111',           // Near-black primary text
+  textSecondary: '#6B6B6B',         // Medium gray secondary
+  textMuted: '#A0A0A0',             // Light gray muted
+  
+  // Minimal accent (near-black for CTAs/buttons)
+  accent: '#1A1A1A',
+  accentDim: 'rgba(26, 26, 26, 0.08)',
+  
+  // Status colors - subdued monochrome tones
+  pending: '#555555',               // Medium gray
+  pendingBg: '#F0F0F0',
+  unassigned: '#888888',            // Lighter gray  
+  unassignedBg: '#F5F5F5',
+  delivered: '#333333',             // Dark gray (success)
+  deliveredBg: '#E8E8E8',
+  error: '#C44',                    // Subdued red (only for errors)
+  errorBg: 'rgba(196, 68, 68, 0.08)',
+  
+  // Legacy compatibility (map old colors to new)
+  accentGreen: '#333333',
+  accentGreenDim: 'rgba(51, 51, 51, 0.08)',
+  accentBlue: '#555555',
+  accentBlueDim: 'rgba(85, 85, 85, 0.08)',
+  accentRed: '#C44',
+  accentRedDim: 'rgba(196, 68, 68, 0.08)',
+  accentAmber: '#888888',
+  accentAmberDim: 'rgba(136, 136, 136, 0.08)',
+  
+  // UI elements
+  tabBar: '#FFFFFF',
+  tabBarBorder: '#EBEBED',
+  overlay: 'rgba(0, 0, 0, 0.4)',
 };
 
-export const GlassCard = {
+export const MinimalCard = {
   backgroundColor: Colors.surface,
   borderWidth: 1,
   borderColor: Colors.surfaceBorder,
   borderRadius: 16,
+  shadowColor: '#000',
+  shadowOffset: { width: 0, height: 2 },
+  shadowOpacity: 0.08,
+  shadowRadius: 8,
+  elevation: 3, // Android shadow
 };
 
-export const GlassInput = {
-  backgroundColor: Colors.inputBg,
+export const MinimalInput = {
+  backgroundColor: Colors.bg,
   borderWidth: 1,
-  borderColor: Colors.inputBorder,
+  borderColor: Colors.surfaceBorder,
   borderRadius: 12,
+};
+
+// Backward-compatible aliases used across existing screens.
+export const GlassCard = MinimalCard;
+export const GlassInput = MinimalInput;
+
+export const Shadows = {
+  card: {
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 8,
+    elevation: 3,
+  },
+  button: {
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+};
+
+export const Spacing = {
+  xs: 4,
+  sm: 8,
+  md: 12,
+  lg: 16,
+  xl: 20,
+  xxl: 24,
+  page: 28,
+  section: 32,
+};
+
+export const Typography = {
+  h1: { fontSize: 28, fontWeight: '700' as const },
+  h2: { fontSize: 24, fontWeight: '700' as const },
+  h3: { fontSize: 20, fontWeight: '600' as const },
+  body: { fontSize: 16, fontWeight: '500' as const },
+  caption: { fontSize: 14, fontWeight: '500' as const },
+  small: { fontSize: 12, fontWeight: '500' as const },
 };

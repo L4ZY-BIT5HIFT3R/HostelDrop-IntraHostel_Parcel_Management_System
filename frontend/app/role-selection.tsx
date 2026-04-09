@@ -3,7 +3,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { Colors, GlassCard } from '../utils/theme';
+import { Colors } from '../utils/theme';
 import AnimatedCard from '../components/AnimatedCard';
 
 export default function RoleSelection() {
@@ -35,8 +35,8 @@ export default function RoleSelection() {
               onPress={() => handleRoleSelect('GUARD')}
               activeOpacity={0.7}
             >
-              <View style={[styles.iconContainer, { backgroundColor: Colors.accentBlueDim }]}>
-                <Ionicons name="shield-checkmark" size={32} color={Colors.accentBlue} />
+              <View style={styles.iconContainer}>
+                <Ionicons name="shield-checkmark" size={36} color={Colors.textPrimary} />
               </View>
               <View style={styles.cardContent}>
                 <Text style={styles.cardTitle}>Guard</Text>
@@ -52,8 +52,8 @@ export default function RoleSelection() {
               onPress={() => handleRoleSelect('STUDENT')}
               activeOpacity={0.7}
             >
-              <View style={[styles.iconContainer, { backgroundColor: Colors.accentGreenDim }]}>
-                <Ionicons name="person" size={32} color={Colors.accentGreen} />
+              <View style={styles.iconContainer}>
+                <Ionicons name="person" size={36} color={Colors.textPrimary} />
               </View>
               <View style={styles.cardContent}>
                 <Text style={styles.cardTitle}>Student</Text>
@@ -69,8 +69,8 @@ export default function RoleSelection() {
               onPress={handleAdminSelect}
               activeOpacity={0.7}
             >
-              <View style={[styles.iconContainer, { backgroundColor: Colors.accentRedDim }]}>
-                <Ionicons name="settings" size={32} color={Colors.accentRed} />
+              <View style={styles.iconContainer}>
+                <Ionicons name="settings" size={36} color={Colors.textPrimary} />
               </View>
               <View style={styles.cardContent}>
                 <Text style={styles.cardTitle}>Admin</Text>
@@ -92,11 +92,11 @@ const styles = StyleSheet.create({
   },
   content: {
     flex: 1,
-    padding: 24,
+    padding: 32,
     justifyContent: 'center',
   },
   header: {
-    marginBottom: 48,
+    marginBottom: 56,
     alignItems: 'center',
   },
   title: {
@@ -111,27 +111,32 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   cardContainer: {
-    gap: 16,
+    gap: 20,
   },
   label: {
-    fontSize: 16,
+    fontSize: 18,
     fontWeight: '600',
-    color: Colors.textSecondary,
-    marginBottom: 8,
+    color: Colors.textPrimary,
+    marginBottom: 12,
   },
   card: {
     flexDirection: 'row',
     alignItems: 'center',
-    ...GlassCard,
-    padding: 20,
+    backgroundColor: Colors.surface,
+    borderWidth: 1,
+    borderColor: Colors.surfaceBorder,
+    borderRadius: 16,
+    padding: 24,
   },
   iconContainer: {
-    width: 56,
-    height: 56,
-    borderRadius: 14,
+    width: 64,
+    height: 64,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: Colors.surfaceBorder,
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: 16,
+    marginRight: 20,
   },
   cardContent: {
     flex: 1,

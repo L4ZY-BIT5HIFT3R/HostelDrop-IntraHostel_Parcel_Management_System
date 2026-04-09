@@ -4,7 +4,7 @@ import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useState, useEffect } from 'react';
-import { Colors, GlassCard } from '../utils/theme';
+import { Colors } from '../utils/theme';
 import AnimatedCard from '../components/AnimatedCard';
 
 export default function HostelSelection() {
@@ -48,8 +48,8 @@ export default function HostelSelection() {
               onPress={() => handleHostelSelect('BOYS')}
               activeOpacity={0.7}
             >
-              <View style={[styles.iconContainer, { backgroundColor: Colors.accentBlueDim }]}>
-                <Ionicons name="male" size={40} color={Colors.accentBlue} />
+              <View style={styles.iconContainer}>
+                <Ionicons name="male" size={44} color={Colors.textPrimary} />
               </View>
               <Text style={styles.cardTitle}>Boys Hostel</Text>
               <Ionicons name="chevron-forward" size={24} color={Colors.textMuted} style={styles.chevron} />
@@ -62,8 +62,8 @@ export default function HostelSelection() {
               onPress={() => handleHostelSelect('GIRLS')}
               activeOpacity={0.7}
             >
-              <View style={[styles.iconContainer, { backgroundColor: 'rgba(219,39,119,0.15)' }]}>
-                <Ionicons name="female" size={40} color="#F472B6" />
+              <View style={styles.iconContainer}>
+                <Ionicons name="female" size={44} color={Colors.textPrimary} />
               </View>
               <Text style={styles.cardTitle}>Girls Hostel</Text>
               <Ionicons name="chevron-forward" size={24} color={Colors.textMuted} style={styles.chevron} />
@@ -82,7 +82,7 @@ const styles = StyleSheet.create({
   },
   content: {
     flex: 1,
-    padding: 24,
+    padding: 32,
   },
   backButton: {
     width: 40,
@@ -96,34 +96,40 @@ const styles = StyleSheet.create({
     marginBottom: 24,
   },
   header: {
-    marginBottom: 48,
+    marginBottom: 56,
   },
   title: {
-    fontSize: 32,
-    fontWeight: 'bold',
+    fontSize: 28,
+    fontWeight: '700',
     color: Colors.textPrimary,
-    marginBottom: 8,
+    marginBottom: 12,
+    lineHeight: 34,
   },
   description: {
     fontSize: 16,
     color: Colors.textSecondary,
   },
   cardContainer: {
-    gap: 16,
+    gap: 20,
   },
   card: {
     flexDirection: 'row',
     alignItems: 'center',
-    ...GlassCard,
+    backgroundColor: Colors.surface,
+    borderWidth: 1,
+    borderColor: Colors.surfaceBorder,
+    borderRadius: 16,
     padding: 24,
   },
   iconContainer: {
     width: 72,
     height: 72,
-    borderRadius: 18,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: Colors.surfaceBorder,
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: 16,
+    marginRight: 20,
   },
   cardTitle: {
     flex: 1,

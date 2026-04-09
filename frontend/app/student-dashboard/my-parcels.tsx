@@ -12,7 +12,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import api from '../../utils/api';
 import { useAuthStore } from '../../store/authStore';
-import { Colors, GlassCard } from '../../utils/theme';
+import { Colors, MinimalCard } from '../../utils/theme';
 import AnimatedCard, { STACK_CARD_SPACING, STACK_FOCUS_OFFSET } from '../../components/AnimatedCard';
 import ParcelTimeline from '../../components/ParcelTimeline';
 
@@ -126,7 +126,7 @@ export default function MyParcels() {
           <View style={styles.parcelInfo}>
             <Text style={styles.roomNumber}>Room {item.room_number}</Text>
             <View style={styles.deliveredBadge}>
-              <Ionicons name="checkmark-circle" size={16} color={Colors.accentGreen} />
+              <Ionicons name="checkmark-circle" size={16} color={Colors.delivered} />
               <Text style={styles.deliveredText}>Delivered</Text>
             </View>
           </View>
@@ -136,7 +136,7 @@ export default function MyParcels() {
               onPress={() => openDelegateDetails(item)}
               activeOpacity={0.8}
             >
-              <Ionicons name="people-outline" size={18} color={Colors.accentGreen} />
+              <Ionicons name="people-outline" size={18} color={Colors.textPrimary} />
             </TouchableOpacity>
           )}
         </View>
@@ -277,9 +277,9 @@ const styles = StyleSheet.create({
     padding: 16,
   },
   parcelCard: {
-    ...GlassCard,
+    ...MinimalCard,
     height: DELIVERED_STACK_CARD_HEIGHT,
-    padding: 16,
+    padding: 20,
     overflow: 'hidden',
   },
   parcelHeader: {
@@ -313,12 +313,12 @@ const styles = StyleSheet.create({
     color: Colors.delivered,
   },
   delegationBadge: {
-    width: 30,
-    height: 30,
-    borderRadius: 15,
-    backgroundColor: Colors.accentGreenDim,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: Colors.surface,
     borderWidth: 1,
-    borderColor: Colors.accentGreen,
+    borderColor: Colors.surfaceBorder,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -329,7 +329,7 @@ const styles = StyleSheet.create({
   },
   tapHint: {
     fontSize: 12,
-    color: Colors.accentGreen,
+    color: Colors.textSecondary,
     marginTop: 8,
     textAlign: 'center',
   },
@@ -360,8 +360,8 @@ const styles = StyleSheet.create({
   modalContent: {
     width: '100%',
     maxWidth: 420,
-    ...GlassCard,
-    padding: 20,
+    ...MinimalCard,
+    padding: 24,
   },
   modalHeader: {
     flexDirection: 'row',

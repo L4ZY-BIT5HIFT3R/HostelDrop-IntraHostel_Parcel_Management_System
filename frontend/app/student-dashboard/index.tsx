@@ -5,17 +5,19 @@ import {
   StyleSheet,
   RefreshControl,
   TouchableOpacity,
-  Alert,
   TextInput,
   Animated,
+  Modal,
+  Pressable,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { CameraView, useCameraPermissions } from 'expo-camera';
+import * as Clipboard from 'expo-clipboard';
 import api, { verifyQrCode, generateDelegationCode } from '../../utils/api';
 import { useAuthStore } from '../../store/authStore';
-import { Colors, GlassCard, GlassInput } from '../../utils/theme';
+import { Colors, MinimalCard } from '../../utils/theme';
 import AnimatedCard, { STACK_CARD_HEIGHT, STACK_CARD_SPACING, STACK_FOCUS_OFFSET } from '../../components/AnimatedCard';
 
 interface Parcel {
@@ -29,6 +31,25 @@ interface Parcel {
   description?: string;
   student_id?: string;
   created_at: string;
+}
+
+type AppAlertVariant = 'info' | 'success' | 'error';
+type AppAlertActionStyle = 'primary' | 'destructive' | 'ghost';
+
+interface AppAlertAction {
+  label: string;
+  style?: AppAlertActionStyle;
+  onPress?: () => void | Promise<void>;
+}
+
+interface AppAlertState {
+  visible: boolean;
+  title: string;
+  message: string;
+  variant: AppAlertVariant;
+  code?: string;
+  footer?: string;
+  actions: AppAlertAction[];
 }
 
 export default function StudentDashboardIndex() {
@@ -49,6 +70,53 @@ export default function StudentDashboardIndex() {
 
   const [showDelegateInput, setShowDelegateInput] = useState(false);
   const [delegatePin, setDelegatePin] = useState('');
+  const [codeCopied, setCodeCopied] = useState(false);
+  const [appAlert, setAppAlert] = useState<AppAlertState>({
+    visible: false,
+    title: '',
+    message: '',
+    variant: 'info',
+    actions: [{ label: 'OK', style: 'primary' }],
+  });
+
+  const hideAppAlert = useCallback(() => {
+    setAppAlert((prev) => ({ ...prev, visible: false }));
+    setCodeCopied(false);
+  }, []);
+
+  const showAppAlert = useCallback((payload: Omit<AppAlertState, 'visible' | 'actions'> & { actions?: AppAlertAction[] }) => {
+    setCodeCopied(false);
+    setAppAlert({
+      visible: true,
+      title: payload.title,
+      message: payload.message,
+      variant: payload.variant,
+      code: payload.code,
+      footer: payload.footer,
+      actions: payload.actions?.length ? payload.actions : [{ label: 'OK', style: 'primary' }],
+    });
+  }, []);
+
+  const handleAlertActionPress = useCallback(async (action: AppAlertAction) => {
+    hideAppAlert();
+    if (action.onPress) {
+      await action.onPress();
+    }
+  }, [hideAppAlert]);
+
+  const handleCopyCode = useCallback(async () => {
+    if (!appAlert.code) return;
+    try {
+      await Clipboard.setStringAsync(appAlert.code);
+      setCodeCopied(true);
+    } catch {
+      showAppAlert({
+        title: 'Copy Failed',
+        message: 'Unable to copy code. Please copy it manually.',
+        variant: 'error',
+      });
+    }
+  }, [appAlert.code, showAppAlert]);
 
   const fetchParcels = useCallback(async () => {
     try {
@@ -58,16 +126,20 @@ export default function StudentDashboardIndex() {
       );
       setParcels(pendingParcels);
       setFilteredParcels(pendingParcels);
-    } catch (error) {
-      console.error('Error fetching parcels:', error);
+    } catch {
+      showAppAlert({
+        title: 'Unable to load parcels',
+        message: 'Please refresh or login again.',
+        variant: 'error',
+      });
     } finally {
       setRefreshing(false);
     }
-  }, [user?.hostel_type]);
+  }, [user?.hostel_type, showAppAlert]);
 
   useEffect(() => {
     fetchParcels();
-  }, []);
+  }, [fetchParcels]);
 
   const handleRefresh = () => {
     setRefreshing(true);
@@ -114,7 +186,11 @@ export default function StudentDashboardIndex() {
     if (!permission?.granted) {
       const result = await requestPermission();
       if (!result.granted) {
-        Alert.alert('Permission Required', 'Camera permission is required to scan QR codes.');
+        showAppAlert({
+          title: 'Permission Required',
+          message: 'Camera permission is required to scan QR codes.',
+          variant: 'error',
+        });
         return;
       }
     }
@@ -124,13 +200,19 @@ export default function StudentDashboardIndex() {
   const handleDelegatePickup = async (parcelId: string) => {
     try {
       const data = await generateDelegationCode(parcelId);
-      Alert.alert(
-        'Delegation Code Generated',
-        `Give this 6-character PIN to your friend so they can pick up your parcel:\n\n${data.delegation_code}\n\nValid for 10 minutes.`,
-        [{ text: 'OK' }]
-      );
+      showAppAlert({
+        title: 'Delegation Code Generated',
+        message: 'Give this 6-character PIN to your friend so they can pick up your parcel:',
+        code: data.delegation_code,
+        footer: 'Valid for 10 minutes.',
+        variant: 'info',
+      });
     } catch (error: any) {
-      Alert.alert('Error', error.response?.data?.detail || 'Failed to generate code.');
+      showAppAlert({
+        title: 'Error',
+        message: error.response?.data?.detail || 'Failed to generate code.',
+        variant: 'error',
+      });
     }
   };
 
@@ -141,35 +223,52 @@ export default function StudentDashboardIndex() {
     try {
       const payload = JSON.parse(data);
       if (!payload.parcel_id || !payload.token) {
-        Alert.alert('Invalid QR Code', 'This QR code is not valid for HostelDrop.');
+        showAppAlert({
+          title: 'Invalid QR Code',
+          message: 'This QR code is not valid for HostelDrop.',
+          variant: 'error',
+        });
         setProcessingScan(false);
         return;
       }
 
       await verifyQrCode(payload.parcel_id, payload.token, showDelegateInput && delegatePin ? delegatePin : undefined);
-      Alert.alert('🎉 Success!', 'Parcel claimed successfully! You may now take your package.');
+      showAppAlert({
+        title: 'Success!',
+        message: 'Parcel claimed successfully! You may now take your package.',
+        variant: 'success',
+      });
       setDelegatePin('');
       setShowDelegateInput(false);
       fetchParcels();
     } catch (e: any) {
-      Alert.alert('Error', e.response?.data?.detail || 'Failed to verify QR code.');
+      showAppAlert({
+        title: 'Error',
+        message: e.response?.data?.detail || 'Failed to verify QR code.',
+        variant: 'error',
+      });
     } finally {
       setProcessingScan(false);
     }
   };
 
   const handleLogout = async () => {
-    Alert.alert('Logout', 'Are you sure you want to logout?', [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Logout',
-        style: 'destructive',
-        onPress: async () => {
-          await logout();
-          router.replace('/role-selection');
+    showAppAlert({
+      title: 'Logout',
+      message: 'Are you sure you want to logout?',
+      variant: 'info',
+      actions: [
+        { label: 'Cancel', style: 'ghost' },
+        {
+          label: 'Logout',
+          style: 'destructive',
+          onPress: async () => {
+            await logout();
+            router.replace('/role-selection');
+          },
         },
-      },
-    ]);
+      ],
+    });
   };
 
   const renderParcelItem = ({ item, index }: { item: Parcel; index: number }) => (
@@ -327,6 +426,95 @@ export default function StudentDashboardIndex() {
         />
       </View>
 
+      <Modal
+        visible={appAlert.visible}
+        animationType="fade"
+        transparent
+        onRequestClose={hideAppAlert}
+      >
+        <View style={styles.appAlertOverlay}>
+          <Pressable style={styles.appAlertOverlayPress} onPress={hideAppAlert} />
+          <View style={styles.appAlertCard}>
+            <View style={styles.appAlertHeader}>
+              <View
+                style={[
+                  styles.appAlertIconWrap,
+                  appAlert.variant === 'success'
+                    ? styles.appAlertIconSuccess
+                    : appAlert.variant === 'error'
+                      ? styles.appAlertIconError
+                      : styles.appAlertIconInfo,
+                ]}
+              >
+                <Ionicons
+                  name={
+                    appAlert.variant === 'success'
+                      ? 'checkmark-circle'
+                      : appAlert.variant === 'error'
+                        ? 'alert-circle'
+                        : 'information-circle'
+                  }
+                  size={20}
+                  color={
+                    appAlert.variant === 'success'
+                      ? Colors.delivered
+                      : appAlert.variant === 'error'
+                        ? Colors.error
+                        : Colors.accent
+                  }
+                />
+              </View>
+              <Text style={styles.appAlertTitle}>{appAlert.title}</Text>
+            </View>
+
+            <Text style={styles.appAlertMessage}>{appAlert.message}</Text>
+
+            {appAlert.code ? (
+              <View style={styles.alertCodeContainer}>
+                <Text style={styles.alertCodeText}>{appAlert.code}</Text>
+                <TouchableOpacity style={styles.copyCodeButton} onPress={handleCopyCode}>
+                  <Ionicons name="copy-outline" size={16} color={Colors.textPrimary} />
+                  <Text style={styles.copyCodeButtonText}>Copy Code</Text>
+                </TouchableOpacity>
+                {codeCopied ? <Text style={styles.copySuccessText}>Copied to clipboard</Text> : null}
+              </View>
+            ) : null}
+
+            {appAlert.footer ? <Text style={styles.appAlertFooter}>{appAlert.footer}</Text> : null}
+
+            <View style={styles.appAlertActions}>
+              {appAlert.actions.map((action, index) => (
+                <TouchableOpacity
+                  key={`${action.label}-${index}`}
+                  style={[
+                    styles.appAlertButton,
+                    action.style === 'destructive'
+                      ? styles.appAlertButtonDestructive
+                      : action.style === 'ghost'
+                        ? styles.appAlertButtonGhost
+                        : styles.appAlertButtonPrimary,
+                  ]}
+                  onPress={() => handleAlertActionPress(action)}
+                >
+                  <Text
+                    style={[
+                      styles.appAlertButtonText,
+                      action.style === 'destructive'
+                        ? styles.appAlertButtonTextDestructive
+                        : action.style === 'ghost'
+                          ? styles.appAlertButtonTextGhost
+                          : styles.appAlertButtonTextPrimary,
+                    ]}
+                  >
+                    {action.label}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          </View>
+        </View>
+      </Modal>
+
       {/* Full Screen Camera Modal */}
       {scanning && (
         <View style={StyleSheet.absoluteFill}>
@@ -426,10 +614,13 @@ const styles = StyleSheet.create({
   searchContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    ...GlassInput,
-    paddingHorizontal: 12,
-    marginBottom: 8,
-    height: 48,
+    backgroundColor: Colors.surfaceHover,
+    borderWidth: 1,
+    borderColor: Colors.surfaceBorder,
+    borderRadius: 12,
+    paddingHorizontal: 16,
+    marginBottom: 12,
+    height: 52,
   },
   searchIcon: {
     marginRight: 8,
@@ -443,9 +634,9 @@ const styles = StyleSheet.create({
     paddingBottom: 16,
   },
   parcelCard: {
-    ...GlassCard,
+    ...MinimalCard,
     height: STACK_CARD_HEIGHT,
-    padding: 16,
+    padding: 20,
     overflow: 'hidden',
   },
   parcelHeader: {
@@ -481,10 +672,12 @@ const styles = StyleSheet.create({
     color: Colors.textPrimary,
   },
   statusBadge: {
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 8,
     backgroundColor: Colors.pendingBg,
+    borderWidth: 1,
+    borderColor: Colors.pending,
   },
   statusText: {
     fontSize: 12,
@@ -525,19 +718,18 @@ const styles = StyleSheet.create({
     marginTop: 16,
   },
   scanButton: {
-    borderColor: 'rgba(129, 199, 132, 0.8)',
-    borderWidth: 1,
+    backgroundColor: Colors.accent,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 8,
-    paddingVertical: 14,
+    paddingVertical: 16,
     borderRadius: 12,
   },
   scanButtonText: {
-    color: '#FFF',
+    color: '#FFFFFF',
     fontSize: 16,
-    fontWeight: '700',
+    fontWeight: '600',
   },
   cameraHeader: {
     flexDirection: 'row',
@@ -574,17 +766,17 @@ const styles = StyleSheet.create({
     borderRadius: 8,
   },
   delegateButton: {
-    backgroundColor: Colors.accentAmber,
+    backgroundColor: Colors.accent,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 8,
-    paddingVertical: 10,
-    borderRadius: 8,
-    marginTop: 12,
+    paddingVertical: 12,
+    borderRadius: 10,
+    marginTop: 16,
   },
   delegateButtonText: {
-    color: '#FFF',
+    color: '#FFFFFF',
     fontSize: 14,
     fontWeight: '600',
   },
@@ -611,5 +803,144 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: 'bold',
     letterSpacing: 2,
+  },
+  appAlertOverlay: {
+    flex: 1,
+    backgroundColor: Colors.overlay,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 24,
+    position: 'relative',
+  },
+  appAlertOverlayPress: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+  },
+  appAlertCard: {
+    width: '100%',
+    maxWidth: 420,
+    ...MinimalCard,
+    padding: 20,
+    zIndex: 2,
+  },
+  appAlertHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    marginBottom: 10,
+  },
+  appAlertIconWrap: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+  },
+  appAlertIconInfo: {
+    backgroundColor: Colors.accentDim,
+    borderColor: Colors.accent,
+  },
+  appAlertIconSuccess: {
+    backgroundColor: Colors.deliveredBg,
+    borderColor: Colors.delivered,
+  },
+  appAlertIconError: {
+    backgroundColor: Colors.errorBg,
+    borderColor: Colors.error,
+  },
+  appAlertTitle: {
+    flex: 1,
+    fontSize: 24,
+    fontWeight: '700',
+    color: Colors.textPrimary,
+  },
+  appAlertMessage: {
+    fontSize: 16,
+    lineHeight: 23,
+    color: Colors.textSecondary,
+  },
+  alertCodeContainer: {
+    marginTop: 14,
+    backgroundColor: Colors.surface,
+    borderWidth: 1,
+    borderColor: Colors.surfaceBorder,
+    borderRadius: 12,
+    padding: 14,
+    alignItems: 'center',
+    gap: 10,
+  },
+  alertCodeText: {
+    fontSize: 30,
+    fontWeight: '700',
+    letterSpacing: 3,
+    color: Colors.textPrimary,
+  },
+  copyCodeButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    borderWidth: 1,
+    borderColor: Colors.surfaceBorder,
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    backgroundColor: Colors.bg,
+  },
+  copyCodeButtonText: {
+    color: Colors.textPrimary,
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  copySuccessText: {
+    fontSize: 12,
+    color: Colors.delivered,
+    fontWeight: '600',
+  },
+  appAlertFooter: {
+    marginTop: 10,
+    fontSize: 14,
+    color: Colors.textSecondary,
+  },
+  appAlertActions: {
+    flexDirection: 'row',
+    gap: 10,
+    marginTop: 18,
+  },
+  appAlertButton: {
+    flex: 1,
+    height: 46,
+    borderRadius: 10,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  appAlertButtonPrimary: {
+    backgroundColor: Colors.accent,
+    borderColor: Colors.accent,
+  },
+  appAlertButtonGhost: {
+    backgroundColor: Colors.bg,
+    borderColor: Colors.surfaceBorder,
+  },
+  appAlertButtonDestructive: {
+    backgroundColor: Colors.errorBg,
+    borderColor: Colors.error,
+  },
+  appAlertButtonText: {
+    fontSize: 15,
+    fontWeight: '600',
+  },
+  appAlertButtonTextPrimary: {
+    color: '#FFF',
+  },
+  appAlertButtonTextGhost: {
+    color: Colors.textPrimary,
+  },
+  appAlertButtonTextDestructive: {
+    color: Colors.error,
   },
 });

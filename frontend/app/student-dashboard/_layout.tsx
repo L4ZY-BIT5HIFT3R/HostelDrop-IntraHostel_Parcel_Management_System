@@ -11,22 +11,24 @@ export default function StudentDashboardLayout() {
   return (
     <Tabs
       screenOptions={{
-        tabBarActiveTintColor: Colors.accentGreen,
-        tabBarInactiveTintColor: Colors.textMuted,
+        tabBarActiveTintColor: Colors.textPrimary,
+        tabBarInactiveTintColor: '#BBBBBB',
         tabBarStyle: {
           backgroundColor: Colors.tabBar,
           borderTopWidth: 1,
-          borderTopColor: Colors.tabBarBorder,
-          height: 60,
-          paddingBottom: 8,
-          paddingTop: 8,
+          borderTopColor: '#CCCCCC',
+          height: 70,
+          paddingBottom: 12,
+          paddingTop: 12,
         },
         headerStyle: {
           backgroundColor: Colors.bg,
+          borderBottomWidth: 1,
+          borderBottomColor: Colors.surfaceBorder,
         },
         headerTintColor: Colors.textPrimary,
         headerTitleStyle: {
-          fontWeight: 'bold',
+          fontWeight: '600',
         },
         headerShadowVisible: false,
       }}
