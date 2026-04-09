@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -16,11 +16,10 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { useState, useEffect } from 'react';
 import api from '../utils/api';
 import { useAuthStore } from '../store/authStore';
 import ErrorPopup from '../components/ErrorPopup';
-import { Colors, GlassInput } from '../utils/theme';
+import { Colors, MinimalInput } from '../utils/theme';
 import { extractErrorMessage } from '../utils/errorMessage';
 
 export default function StudentLogin() {
@@ -591,7 +590,7 @@ const styles = StyleSheet.create({
   },
   content: {
     flex: 1,
-    padding: 24,
+    padding: 32,
   },
   backButton: {
     width: 40,
@@ -606,16 +605,18 @@ const styles = StyleSheet.create({
   },
   header: {
     alignItems: 'center',
-    marginBottom: 40,
+    marginBottom: 48,
   },
   iconContainer: {
     width: 80,
     height: 80,
     borderRadius: 40,
-    backgroundColor: Colors.accentGreenDim,
+    backgroundColor: Colors.surface,
+    borderWidth: 1,
+    borderColor: Colors.surfaceBorder,
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 16,
+    marginBottom: 20,
   },
   title: {
     fontSize: 28,
@@ -636,29 +637,29 @@ const styles = StyleSheet.create({
   },
   modeSwitchContainer: {
     flexDirection: 'row',
-    backgroundColor: Colors.surface,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: Colors.surfaceBorder,
-    padding: 4,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.surfaceBorder,
+    paddingBottom: 8,
+    marginBottom: 8,
   },
   modeButton: {
     flex: 1,
-    height: 40,
-    borderRadius: 10,
+    height: 44,
     alignItems: 'center',
     justifyContent: 'center',
+    paddingBottom: 8,
   },
   modeButtonActive: {
-    backgroundColor: Colors.accent,
+    borderBottomWidth: 2,
+    borderBottomColor: Colors.accent,
   },
   modeButtonText: {
-    fontSize: 14,
+    fontSize: 16,
     fontWeight: '600',
-    color: Colors.textMuted,
+    color: Colors.textSecondary,
   },
   modeButtonTextActive: {
-    color: '#FFFFFF',
+    color: Colors.textPrimary,
   },
   inputContainer: {
     gap: 8,
@@ -666,12 +667,12 @@ const styles = StyleSheet.create({
   label: {
     fontSize: 14,
     fontWeight: '600',
-    color: Colors.textSecondary,
+    color: Colors.textPrimary,
   },
   inputWrapper: {
     flexDirection: 'row',
     alignItems: 'center',
-    ...GlassInput,
+    ...MinimalInput,
     paddingHorizontal: 16,
   },
   inputIcon: {
@@ -684,7 +685,7 @@ const styles = StyleSheet.create({
     color: Colors.textPrimary,
   },
   button: {
-    backgroundColor: Colors.accentGreen,
+    backgroundColor: Colors.accent,
     borderRadius: 12,
     height: 52,
     alignItems: 'center',
@@ -710,7 +711,7 @@ const styles = StyleSheet.create({
   resendButtonText: {
     fontSize: 14,
     fontWeight: '600',
-    color: Colors.accentGreen,
+    color: Colors.textPrimary,
   },
   forgotPasswordLink: {
     alignSelf: 'flex-end',
@@ -719,7 +720,7 @@ const styles = StyleSheet.create({
   forgotPasswordText: {
     fontSize: 14,
     fontWeight: '600',
-    color: Colors.accent,
+    color: Colors.textPrimary,
   },
   // Modal styles
   modalOverlay: {
@@ -759,7 +760,7 @@ const styles = StyleSheet.create({
   },
   fpEmailHint: {
     fontSize: 13,
-    color: Colors.accentGreen,
+    color: Colors.textSecondary,
     fontWeight: '500',
     textAlign: 'center',
   },

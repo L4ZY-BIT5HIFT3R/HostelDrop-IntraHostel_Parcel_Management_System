@@ -1,7 +1,7 @@
 import React from 'react';
 import { Modal, View, Text, StyleSheet, TouchableOpacity, Pressable } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { Colors, GlassCard } from '../utils/theme';
+import { Colors, MinimalCard } from '../utils/theme';
 import { normalizeMessage } from '../utils/errorMessage';
 
 type Props = {
@@ -54,30 +54,31 @@ const styles = StyleSheet.create({
   card: {
     width: '100%',
     maxWidth: 420,
-    ...GlassCard,
-    backgroundColor: 'rgba(30,30,50,0.95)',
-    padding: 20,
+    ...MinimalCard,
+    padding: 24,
     alignItems: 'center',
-    gap: 12,
+    gap: 16,
     position: 'relative',
     zIndex: 2,
   },
   closeButton: {
     position: 'absolute',
-    top: 10,
-    right: 10,
-    width: 32,
-    height: 32,
-    borderRadius: 16,
+    top: 12,
+    right: 12,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: Colors.accentRedDim,
+    backgroundColor: Colors.errorBg,
   },
   iconWrap: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    backgroundColor: Colors.accentRedDim,
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    backgroundColor: Colors.errorBg,
+    borderWidth: 1,
+    borderColor: Colors.error,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -94,17 +95,19 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   button: {
-    marginTop: 8,
-    backgroundColor: Colors.accent,
-    borderRadius: 10,
-    height: 44,
-    paddingHorizontal: 20,
+    marginTop: 12,
+    borderWidth: 1,
+    borderColor: Colors.error,
+    borderRadius: 12,
+    height: 48,
+    paddingHorizontal: 24,
     alignItems: 'center',
     justifyContent: 'center',
+    backgroundColor: Colors.bg,
   },
   buttonText: {
-    color: '#FFFFFF',
-    fontSize: 15,
+    color: Colors.error,
+    fontSize: 16,
     fontWeight: '600',
   },
 });

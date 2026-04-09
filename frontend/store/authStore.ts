@@ -25,6 +25,11 @@ interface AuthState {
   checkAuth: () => Promise<void>;
 }
 
+const normalizeToken = (token?: string | null) => {
+  if (!token) return '';
+  return token.replace(/^Bearer\s+/i, '').trim();
+};
+
 export const useAuthStore = create<AuthState>((set) => ({
   user: null,
   token: null,
@@ -36,8 +41,9 @@ export const useAuthStore = create<AuthState>((set) => ({
   setToken: (token) => set({ token }),
   
   login: async (user, token) => {
-    await setAuthSession(token, user);
-    set({ user, token, isAuthenticated: true });
+    const normalizedToken = normalizeToken(token);
+    await setAuthSession(normalizedToken, user);
+    set({ user, token: normalizedToken, isAuthenticated: true });
   },
   
   logout: async () => {

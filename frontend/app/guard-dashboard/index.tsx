@@ -44,7 +44,6 @@ export default function GuardDashboardIndex() {
   const [filteredParcels, setFilteredParcels] = useState<Parcel[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [refreshing, setRefreshing] = useState(false);
-  const [loading, setLoading] = useState(true);
   const [addModalVisible, setAddModalVisible] = useState(false);
   const [assignModalVisible, setAssignModalVisible] = useState(false);
   const [editModalVisible, setEditModalVisible] = useState(false);
@@ -89,10 +88,9 @@ export default function GuardDashboardIndex() {
       const response = await api.get('/parcel/guard/pending');
       setParcels(response.data.parcels);
       setFilteredParcels(response.data.parcels);
-    } catch (error) {
-      console.error('Error fetching parcels:', error);
+    } catch {
+      Alert.alert('Unable to load parcels', 'Please refresh or login again.');
     } finally {
-      setLoading(false);
       setRefreshing(false);
     }
   };
@@ -180,23 +178,14 @@ export default function GuardDashboardIndex() {
       return;
     }
 
-    setLoading(true);
     try {
-      console.log('Assigning parcel:', {
+      await api.put('/parcel/assign', {
         parcel_id: selectedParcel._id,
         roll_number: assignRollNumber.trim(),
         hostel_type: user?.hostel_type,
         room_number: assignRoomNumber.trim(),
       });
 
-      const response = await api.put('/parcel/assign', {
-        parcel_id: selectedParcel._id,
-        roll_number: assignRollNumber.trim(),
-        hostel_type: user?.hostel_type,
-        room_number: assignRoomNumber.trim(),
-      });
-
-      console.log('Assign response:', response.data);
       Alert.alert('Success', 'Parcel assigned successfully');
       setAssignModalVisible(false);
       setSelectedParcel(null);
@@ -204,49 +193,26 @@ export default function GuardDashboardIndex() {
       setAssignRoomNumber('');
       fetchParcels();
     } catch (error: any) {
-      console.error('Assign error:', error);
-      const errorMessage = extractErrorMessage(error, 'Failed to assign parcel');
-      Alert.alert('Error', errorMessage);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleSendOTP = async (parcel: Parcel) => {
-    try {
-      const response = await api.post('/parcel/send-otp', {
-        parcel_id: parcel._id,
-      });
-
-      setSelectedParcel(parcel);
-      setEnteredOTP('');
-      setErrorMessage('');
-      setOtpModalVisible(true);
-      Alert.alert('OTP Sent', `OTP sent to ${response.data.email}`);
-    } catch (error: any) {
-      Alert.alert('Error', extractErrorMessage(error, 'Failed to send OTP'));
+      const errorMsg = extractErrorMessage(error, 'Failed to assign parcel');
+      Alert.alert('Error', errorMsg);
     }
   };
 
   const handleShowQR = async (parcel: Parcel) => {
-    setLoading(true);
     try {
       const response = await generateQrCode(parcel._id);
       const token = response.token;
-      
+
       const payload = JSON.stringify({
         parcel_id: parcel._id,
         token: token,
       });
-      
+
       setQrString(payload);
       setSelectedParcel(parcel);
       setQrModalVisible(true);
     } catch (error: any) {
-      console.error('Error generating QR code:', error);
-      Alert.alert('Error Details', String(error) + "\n" + JSON.stringify(error?.response?.data || {}));
-    } finally {
-      setLoading(false);
+      Alert.alert('Error', extractErrorMessage(error, 'Failed to generate QR code.'));
     }
   };
 
@@ -269,7 +235,6 @@ export default function GuardDashboardIndex() {
       return;
     }
 
-    setLoading(true);
     try {
       await api.put('/parcel/update', {
         parcel_id: selectedParcel._id,
@@ -288,8 +253,6 @@ export default function GuardDashboardIndex() {
       fetchParcels();
     } catch (error: any) {
       Alert.alert('Error', extractErrorMessage(error, 'Failed to update parcel'));
-    } finally {
-      setLoading(false);
     }
   };
 
@@ -1045,7 +1008,7 @@ const styles = StyleSheet.create({
   modalTitle: {
     fontSize: 20,
     fontWeight: 'bold',
-    color: Colors.textPrimary,
+    color: '#FFFFFF',
   },
   modalForm: {
     paddingHorizontal: 24,
@@ -1056,15 +1019,18 @@ const styles = StyleSheet.create({
   inputLabel: {
     fontSize: 14,
     fontWeight: '600',
-    color: Colors.textSecondary,
+    color: '#D1D5DB',
     marginBottom: 8,
   },
   textInput: {
-    ...GlassInput,
+    backgroundColor: 'rgba(255, 255, 255, 0.08)',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.24)',
+    borderRadius: 12,
     paddingHorizontal: 16,
     paddingVertical: 12,
     fontSize: 16,
-    color: Colors.textPrimary,
+    color: '#FFFFFF',
   },
   textArea: {
     height: 80,

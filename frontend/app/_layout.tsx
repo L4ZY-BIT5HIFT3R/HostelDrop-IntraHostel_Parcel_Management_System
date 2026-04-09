@@ -10,7 +10,10 @@ export default function RootLayout() {
   }, [checkAuth]);
 
   return (
-    <Stack screenOptions={{ headerShown: false }}>
+    <Stack screenOptions={{ 
+      headerShown: false, 
+      animation: 'fade' as const 
+    }}>
       <Stack.Screen name="index" />
       <Stack.Screen name="role-selection" />
       <Stack.Screen name="hostel-selection" />

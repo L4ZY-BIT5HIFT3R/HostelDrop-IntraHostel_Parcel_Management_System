@@ -178,10 +178,11 @@ const styles = StyleSheet.create({
     width: 1.5,
   },
   connectorDone: {
-    backgroundColor: Colors.accentBlue,
+    backgroundColor: Colors.textPrimary,
   },
   connectorPending: {
     backgroundColor: Colors.surfaceBorder,
+    borderStyle: 'dashed' as const,
   },
   dot: {
     width: 10,
@@ -190,16 +191,16 @@ const styles = StyleSheet.create({
     borderWidth: 1.5,
   },
   dotDone: {
-    backgroundColor: Colors.accentBlue,
-    borderColor: Colors.accentBlue,
+    backgroundColor: Colors.textPrimary,
+    borderColor: Colors.textPrimary,
   },
   dotPending: {
     backgroundColor: Colors.bg,
     borderColor: Colors.surfaceBorder,
   },
   dotCurrent: {
-    borderColor: Colors.accentAmber,
-    backgroundColor: Colors.accentAmber,
+    borderColor: Colors.textSecondary,
+    backgroundColor: Colors.textSecondary,
   },
   textBlock: {
     flex: 1,

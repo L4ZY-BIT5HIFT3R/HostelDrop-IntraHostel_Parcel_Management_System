@@ -22,7 +22,7 @@ export default function Index() {
         router.replace('/role-selection');
       }
     }
-  }, [isLoading, isAuthenticated, user]);
+  }, [isLoading, isAuthenticated, user, router]);
 
   return (
     <View style={styles.container}>

@@ -84,6 +84,8 @@ if IS_PRODUCTION and ENABLE_SENSITIVE_LOGGING:
     raise RuntimeError("ENABLE_SENSITIVE_LOGGING cannot be enabled in production")
 
 TRUST_PROXY_HEADERS = os.environ.get("TRUST_PROXY_HEADERS", "false").strip().lower() == "true"
+ENFORCE_STUDENT_EMAIL_DOMAIN = os.environ.get("ENFORCE_STUDENT_EMAIL_DOMAIN", "true").strip().lower() == "true"
+STUDENT_EMAIL_DOMAIN = os.environ.get("STUDENT_EMAIL_DOMAIN", "iiitg.ac.in").strip().lower()
 
 # Security
 security = HTTPBearer()
@@ -300,6 +302,15 @@ def _validate_username(value: str) -> str:
     return cleaned
 
 
+def _validate_student_email(value: str) -> str:
+    cleaned = value.strip().lower()
+    if ENFORCE_STUDENT_EMAIL_DOMAIN and STUDENT_EMAIL_DOMAIN:
+        domain = cleaned.rsplit("@", 1)[-1] if "@" in cleaned else ""
+        if domain != STUDENT_EMAIL_DOMAIN:
+            raise ValueError(f"Student email must use @{STUDENT_EMAIL_DOMAIN}")
+    return cleaned
+
+
 def _validate_otp(value: str) -> str:
     cleaned = value.strip()
     if not OTP_PATTERN.fullmatch(cleaned):
@@ -364,6 +375,11 @@ class StudentRegisterRequest(SanitizedRequestModel):
     def validate_roll_number(cls, value: str) -> str:
         return _validate_roll_number(value)
 
+    @field_validator("email")
+    @classmethod
+    def validate_email(cls, value: EmailStr) -> str:
+        return _validate_student_email(str(value))
+
     @field_validator("hostel_type")
     @classmethod
     def validate_hostel_type(cls, value: str) -> str:
@@ -389,6 +405,11 @@ class StudentRegisterVerify(SanitizedRequestModel):
     @classmethod
     def validate_roll_number(cls, value: str) -> str:
         return _validate_roll_number(value)
+
+    @field_validator("email")
+    @classmethod
+    def validate_email(cls, value: EmailStr) -> str:
+        return _validate_student_email(str(value))
 
     @field_validator("hostel_type")
     @classmethod
@@ -1202,6 +1223,9 @@ def ensure_status_history(parcel: Dict[str, Any]) -> List[Dict[str, Any]]:
 def serialize_parcel(parcel: Dict[str, Any]) -> Dict[str, Any]:
     if parcel.get("_id") is not None:
         parcel["_id"] = str(parcel["_id"])
+    parcel.pop("qr_pickup_token", None)
+    parcel.pop("delegation_code", None)
+    parcel.pop("delegation_expiry", None)
     parcel["status_history"] = ensure_status_history(parcel)
     return parcel
 
@@ -1586,7 +1610,7 @@ async def student_register_request_otp(
     _: None = Depends(enforce_auth_rate_limit),
 ):
     """Request OTP for student self-registration"""
-    validate_hostel_type(request.hostel_type)
+    hostel_type = validate_hostel_type(request.hostel_type)
     existing = await db.users.find_one({
         "$or": [
             {"roll_number": request.roll_number, "role": UserRole.STUDENT},
@@ -1599,6 +1623,8 @@ async def student_register_request_otp(
 
     await db.otps.update_many({
         "email": request.email,
+        "roll_number": request.roll_number,
+        "hostel_type": hostel_type,
         "purpose": OTPPurpose.STUDENT_REGISTRATION,
         "is_used": False
     }, {"$set": {"is_used": True}})
@@ -1607,6 +1633,8 @@ async def student_register_request_otp(
     expiry_time = datetime.utcnow() + timedelta(minutes=10)
     otp_doc = {
         "email": request.email,
+        "roll_number": request.roll_number,
+        "hostel_type": hostel_type,
         "purpose": OTPPurpose.STUDENT_REGISTRATION,
         "otp_code": otp_code,
         "expiry_time": expiry_time,
@@ -1635,6 +1663,8 @@ async def student_register_verify_otp(
 
     otp = await db.otps.find_one({
         "email": request.email,
+        "roll_number": request.roll_number,
+        "hostel_type": hostel_type,
         "purpose": OTPPurpose.STUDENT_REGISTRATION,
         "otp_code": request.otp_code,
         "is_used": False
@@ -2447,7 +2477,7 @@ async def send_parcel_otp(request: SendOTPRequest, current_user: dict = Depends(
     
     response_payload = {
         "message": "OTP sent to student email",
-        "email": parcel["student_email"]
+        "email": mask_email(parcel["student_email"])
     }
 
     if INCLUDE_DEBUG_OTP_IN_RESPONSE:
@@ -2603,9 +2633,13 @@ async def verify_parcel_qr(request: VerifyQRRequest, current_user: dict = Depend
         raise HTTPException(status_code=404, detail="Parcel not found")
     if parcel["status"] != ParcelStatus.PENDING:
         raise HTTPException(status_code=400, detail="Parcel is not available for pickup")
-        
+
+    is_owner = parcel.get("student_id") == current_user["_id"]
+    if not is_owner and parcel.get("hostel_type") != current_user.get("hostel_type"):
+        raise HTTPException(status_code=403, detail="Cross-hostel delegated pickup is not allowed")
+
     # Security: Ensure this student owns the parcel, OR provided a valid delegation code
-    if parcel.get("student_id") != current_user["_id"]:
+    if not is_owner:
         if not request.delegation_code or parcel.get("delegation_code") != request.delegation_code:
             raise HTTPException(status_code=403, detail="This parcel belongs to a different student")
         delegation_expiry = parcel.get("delegation_expiry")
@@ -2619,7 +2653,7 @@ async def verify_parcel_qr(request: VerifyQRRequest, current_user: dict = Depend
         
     # Mark as delivered and clear token and delegation fields
     delivered_at = datetime.utcnow()
-    collected_by_delegate = parcel.get("student_id") != current_user["_id"]
+    collected_by_delegate = not is_owner
     delegated_receiver_info = (
         build_delegated_receiver_info(current_user) if collected_by_delegate else None
     )
