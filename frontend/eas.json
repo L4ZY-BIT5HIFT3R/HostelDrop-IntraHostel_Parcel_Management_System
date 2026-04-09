@@ -14,13 +14,18 @@
         "buildType": "apk"
       }
     },
+    "apk": {
+      "distribution": "internal",
+      "android": {
+        "buildType": "apk"
+      }
+    },
     "production": {
+      "developmentClient": false,
+      "distribution": "store",
       "autoIncrement": true,
       "android": {
         "buildType": "app-bundle"
-      },
-      "env": {
-        "EAS_BUILD_NO_EXPO_GO_WARNING": "true"
       }
     }
   },
