@@ -1,6 +1,6 @@
 import { Tabs, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { Pressable, StyleSheet, View } from 'react-native';
+import { Platform, Pressable, StyleSheet, View } from 'react-native';
 import { Colors } from '../../utils/theme';
 
 export default function GuardDashboardLayout() {
@@ -47,7 +47,10 @@ export default function GuardDashboardLayout() {
           tabBarLabel: () => null,
           tabBarIcon: () => null,
           tabBarButton: () => (
-            <View pointerEvents="box-none" style={styles.fabSlot}>
+            <View
+              style={styles.fabSlot}
+              {...(Platform.OS !== 'web' ? { pointerEvents: 'box-none' } : {})}
+            >
               <Pressable
                 onPress={() => router.push('/guard-dashboard?openAdd=1')}
                 style={({ pressed }) => [
