@@ -44,6 +44,9 @@ export default function Profile() {
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [changePwLoading, setChangePwLoading] = useState(false);
+  const [showCurrentPassword, setShowCurrentPassword] = useState(false);
+  const [showNewPassword, setShowNewPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
   // Forgot password (from profile) state
   const [showForgotModal, setShowForgotModal] = useState(false);
@@ -52,6 +55,7 @@ export default function Profile() {
   const [fpOtpSent, setFpOtpSent] = useState(false);
   const [fpLoading, setFpLoading] = useState(false);
   const [fpMaskedEmail, setFpMaskedEmail] = useState('');
+  const [showFpNewPassword, setShowFpNewPassword] = useState(false);
 
   const [errorVisible, setErrorVisible] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
@@ -297,9 +301,16 @@ export default function Profile() {
                       placeholder="Enter current password"
                       value={currentPassword}
                       onChangeText={setCurrentPassword}
-                      secureTextEntry
+                      secureTextEntry={!showCurrentPassword}
                       placeholderTextColor={Colors.textMuted}
                     />
+                    <TouchableOpacity onPress={() => setShowCurrentPassword((prev) => !prev)} style={styles.eyeIcon}>
+                      <Ionicons
+                        name={showCurrentPassword ? 'eye-off-outline' : 'eye-outline'}
+                        size={20}
+                        color={Colors.textMuted}
+                      />
+                    </TouchableOpacity>
                   </View>
                 </View>
 
@@ -312,9 +323,16 @@ export default function Profile() {
                       placeholder="Enter new password"
                       value={newPassword}
                       onChangeText={setNewPassword}
-                      secureTextEntry
+                      secureTextEntry={!showNewPassword}
                       placeholderTextColor={Colors.textMuted}
                     />
+                    <TouchableOpacity onPress={() => setShowNewPassword((prev) => !prev)} style={styles.eyeIcon}>
+                      <Ionicons
+                        name={showNewPassword ? 'eye-off-outline' : 'eye-outline'}
+                        size={20}
+                        color={Colors.textMuted}
+                      />
+                    </TouchableOpacity>
                   </View>
                 </View>
 
@@ -327,9 +345,16 @@ export default function Profile() {
                       placeholder="Re-enter new password"
                       value={confirmPassword}
                       onChangeText={setConfirmPassword}
-                      secureTextEntry
+                      secureTextEntry={!showConfirmPassword}
                       placeholderTextColor={Colors.textMuted}
                     />
+                    <TouchableOpacity onPress={() => setShowConfirmPassword((prev) => !prev)} style={styles.eyeIcon}>
+                      <Ionicons
+                        name={showConfirmPassword ? 'eye-off-outline' : 'eye-outline'}
+                        size={20}
+                        color={Colors.textMuted}
+                      />
+                    </TouchableOpacity>
                   </View>
                 </View>
 
@@ -425,9 +450,16 @@ export default function Profile() {
                           placeholder="Enter new password"
                           value={fpNewPassword}
                           onChangeText={setFpNewPassword}
-                          secureTextEntry
+                          secureTextEntry={!showFpNewPassword}
                           placeholderTextColor={Colors.textMuted}
                         />
+                        <TouchableOpacity onPress={() => setShowFpNewPassword((prev) => !prev)} style={styles.eyeIcon}>
+                          <Ionicons
+                            name={showFpNewPassword ? 'eye-off-outline' : 'eye-outline'}
+                            size={20}
+                            color={Colors.textMuted}
+                          />
+                        </TouchableOpacity>
                       </View>
                     </View>
 
@@ -619,6 +651,9 @@ const styles = StyleSheet.create({
   },
   inputIcon: {
     marginRight: 10,
+  },
+  eyeIcon: {
+    padding: 8,
   },
   input: {
     flex: 1,

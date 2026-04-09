@@ -9,6 +9,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 from fastapi import HTTPException
+from fastapi.testclient import TestClient
 from bson import ObjectId
 from pydantic import ValidationError
 
@@ -228,3 +229,33 @@ def test_validate_parcel_status_rejects_unknown_value():
         server.validate_parcel_status("unknown")
     assert exc_info.value.status_code == 400
     assert exc_info.value.detail == "Invalid parcel status"
+
+
+def test_access_token_contains_security_claims():
+    server = load_server_module()
+    token = server.create_access_token(
+        {"user_id": str(ObjectId()), "role": server.UserRole.GUARD, "hostel_type": server.HostelType.BOYS}
+    )
+    payload = server.verify_token(token)
+    assert isinstance(payload.get("jti"), str) and len(payload["jti"]) > 10
+    assert payload.get("iat") is not None
+    assert payload.get("exp") is not None
+
+
+def test_secret_hash_helpers_work_for_otp_like_values():
+    server = load_server_module()
+    secret = "123456"
+    hashed = server.hash_secret_value(secret)
+    assert hashed != secret
+    assert server.secret_matches(hashed, secret) is True
+    assert server.secret_matches(hashed, "654321") is False
+
+
+def test_security_headers_are_added_to_api_responses():
+    server = load_server_module()
+    client = TestClient(server.app)
+    response = client.get("/api/")
+    assert response.status_code == 200
+    assert response.headers.get("x-content-type-options") == "nosniff"
+    assert response.headers.get("x-frame-options") == "DENY"
+    assert response.headers.get("referrer-policy") == "no-referrer"

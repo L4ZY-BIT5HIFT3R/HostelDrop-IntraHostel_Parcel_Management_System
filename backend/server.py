@@ -17,6 +17,8 @@ import string
 import re
 import secrets
 import jwt
+import hashlib
+import hmac
 from passlib.context import CryptContext
 from bson import ObjectId
 from bson.errors import InvalidId
@@ -95,6 +97,7 @@ app = FastAPI(title="Hostel Parcel Management System")
 
 # Create a router with the /api prefix
 api_router = APIRouter(prefix="/api")
+TOKEN_REVOCATIONS_COLLECTION = "token_revocations"
 
 
 @app.middleware("http")
@@ -117,6 +120,18 @@ async def enforce_request_limits(request: Request, call_next):
             return JSONResponse(status_code=413, content={"detail": "Request body too large"})
 
     return await call_next(request)
+
+@app.middleware("http")
+async def add_security_headers(request: Request, call_next):
+    response = await call_next(request)
+    response.headers.setdefault("X-Content-Type-Options", "nosniff")
+    response.headers.setdefault("X-Frame-Options", "DENY")
+    response.headers.setdefault("Referrer-Policy", "no-referrer")
+    response.headers.setdefault("Permissions-Policy", "camera=(), microphone=(), geolocation=()")
+    response.headers.setdefault("Content-Security-Policy", "default-src 'none'; frame-ancestors 'none'; base-uri 'none'")
+    if IS_PRODUCTION:
+        response.headers.setdefault("Strict-Transport-Security", "max-age=63072000; includeSubDomains; preload")
+    return response
 
 # Gmail SMTP Configuration (App Password)
 # Set these in backend/.env:
@@ -142,7 +157,7 @@ if len(ADMIN_PASSWORD) < MIN_PASSWORD_LENGTH:
 
 AUTO_DELETE_DELIVERED_INTERVAL_SECONDS = max(
     1,
-    int(os.environ.get("AUTO_DELETE_DELIVERED_INTERVAL_SECONDS", "300"))
+    int(os.environ.get("AUTO_DELETE_DELIVERED_INTERVAL_SECONDS", "604800"))
 )
 AUTO_DELETE_DELIVERED_POLL_SECONDS = max(
     1,
@@ -877,6 +892,16 @@ def generate_qr_token() -> str:
     """Generate a secure random token for QR code pickup."""
     return str(uuid.uuid4())
 
+def hash_secret_value(secret_value: str) -> str:
+    material = f"{SECRET_KEY}:{secret_value}".encode("utf-8")
+    return hashlib.sha256(material).hexdigest()
+
+def secret_matches(stored_hash: Optional[str], candidate_value: str) -> bool:
+    if not stored_hash:
+        return False
+    computed = hash_secret_value(candidate_value)
+    return hmac.compare_digest(stored_hash, computed)
+
 def generate_display_id(description: Optional[str]) -> str:
     """Generate a human-readable parcel ID like PF1024 or PU0001"""
     prefix = "U"
@@ -899,7 +924,11 @@ def generate_display_id(description: Optional[str]) -> str:
 def create_access_token(data: dict) -> str:
     to_encode = data.copy()
     expire = datetime.utcnow() + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
-    to_encode.update({"exp": expire})
+    to_encode.update({
+        "exp": expire,
+        "iat": datetime.utcnow(),
+        "jti": str(uuid.uuid4()),
+    })
     encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
     return encoded_jwt
 
@@ -912,9 +941,22 @@ def verify_token(token: str) -> dict:
     except jwt.PyJWTError:
         raise HTTPException(status_code=401, detail="Invalid token")
 
+async def is_token_revoked(token: str, payload: dict) -> bool:
+    checks: List[Dict[str, Any]] = [{"token_hash": hash_secret_value(token)}]
+    token_jti = payload.get("jti")
+    if isinstance(token_jti, str) and token_jti.strip():
+        checks.append({"jti": token_jti.strip()})
+    revoked = await db[TOKEN_REVOCATIONS_COLLECTION].find_one({
+        "$or": checks,
+        "expires_at": {"$gt": datetime.utcnow()},
+    })
+    return revoked is not None
+
 async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security)):
     token = credentials.credentials
     payload = verify_token(token)
+    if await is_token_revoked(token, payload):
+        raise HTTPException(status_code=401, detail="Token has been revoked")
     user_id = payload.get("user_id")
     if not user_id:
         raise HTTPException(status_code=401, detail="Invalid token")
@@ -1224,7 +1266,9 @@ def serialize_parcel(parcel: Dict[str, Any]) -> Dict[str, Any]:
     if parcel.get("_id") is not None:
         parcel["_id"] = str(parcel["_id"])
     parcel.pop("qr_pickup_token", None)
+    parcel.pop("qr_pickup_token_hash", None)
     parcel.pop("delegation_code", None)
+    parcel.pop("delegation_code_hash", None)
     parcel.pop("delegation_expiry", None)
     parcel["status_history"] = ensure_status_history(parcel)
     return parcel
@@ -1604,6 +1648,45 @@ async def student_login(request: StudentLoginRequest, _: None = Depends(enforce_
         "user": user
     }
 
+@api_router.post("/auth/logout")
+async def logout_user(
+    current_user: dict = Depends(get_current_user),
+    credentials: HTTPAuthorizationCredentials = Depends(security),
+):
+    """Revoke the active bearer token until its expiry."""
+    token = credentials.credentials
+    payload = verify_token(token)
+    exp_value = payload.get("exp")
+    if exp_value is None:
+        raise HTTPException(status_code=401, detail="Invalid token")
+
+    try:
+        expires_at = datetime.utcfromtimestamp(int(exp_value))
+    except (TypeError, ValueError, OSError):
+        raise HTTPException(status_code=401, detail="Invalid token")
+
+    token_jti = payload.get("jti")
+    selector: Dict[str, Any]
+    revocation_doc: Dict[str, Any] = {
+        "user_id": current_user.get("_id"),
+        "expires_at": expires_at,
+        "revoked_at": datetime.utcnow(),
+    }
+    if isinstance(token_jti, str) and token_jti.strip():
+        selector = {"jti": token_jti.strip()}
+        revocation_doc["jti"] = token_jti.strip()
+    else:
+        token_hash = hash_secret_value(token)
+        selector = {"token_hash": token_hash}
+        revocation_doc["token_hash"] = token_hash
+
+    await db[TOKEN_REVOCATIONS_COLLECTION].update_one(
+        selector,
+        {"$set": revocation_doc},
+        upsert=True,
+    )
+    return {"message": "Logged out successfully"}
+
 @api_router.post("/auth/student/register/request-otp")
 async def student_register_request_otp(
     request: StudentRegisterRequest,
@@ -1627,7 +1710,7 @@ async def student_register_request_otp(
         "hostel_type": hostel_type,
         "purpose": OTPPurpose.STUDENT_REGISTRATION,
         "is_used": False
-    }, {"$set": {"is_used": True}})
+    }, {"$set": {"is_used": True}, "$unset": {"otp_code": ""}})
 
     otp_code = generate_otp()
     expiry_time = datetime.utcnow() + timedelta(minutes=10)
@@ -1636,7 +1719,7 @@ async def student_register_request_otp(
         "roll_number": request.roll_number,
         "hostel_type": hostel_type,
         "purpose": OTPPurpose.STUDENT_REGISTRATION,
-        "otp_code": otp_code,
+        "otp_code_hash": hash_secret_value(otp_code),
         "expiry_time": expiry_time,
         "is_used": False,
         "created_at": datetime.utcnow()
@@ -1661,14 +1744,21 @@ async def student_register_verify_otp(
     if existing:
         raise HTTPException(status_code=400, detail="Registration could not be completed")
 
-    otp = await db.otps.find_one({
+    otp_candidates = await db.otps.find({
         "email": request.email,
         "roll_number": request.roll_number,
         "hostel_type": hostel_type,
         "purpose": OTPPurpose.STUDENT_REGISTRATION,
-        "otp_code": request.otp_code,
         "is_used": False
-    })
+    }).sort("created_at", -1).to_list(20)
+    otp = next(
+        (
+            candidate for candidate in otp_candidates
+            if secret_matches(candidate.get("otp_code_hash"), request.otp_code)
+            or candidate.get("otp_code") == request.otp_code
+        ),
+        None,
+    )
     if not otp:
         raise HTTPException(status_code=401, detail="Invalid OTP")
     if otp["expiry_time"] < datetime.utcnow():
@@ -1676,7 +1766,7 @@ async def student_register_verify_otp(
 
     await db.otps.update_one(
         {"_id": otp["_id"]},
-        {"$set": {"is_used": True}}
+        {"$set": {"is_used": True}, "$unset": {"otp_code": ""}}
     )
 
     student_doc = {
@@ -1751,14 +1841,14 @@ async def student_forgot_password_request_otp(request: ForgotPasswordRequest, _:
         "email": student["email"],
         "purpose": OTPPurpose.PASSWORD_RESET,
         "is_used": False
-    }, {"$set": {"is_used": True}})
+    }, {"$set": {"is_used": True}, "$unset": {"otp_code": ""}})
 
     otp_code = generate_otp()
     expiry_time = datetime.utcnow() + timedelta(minutes=10)
     otp_doc = {
         "email": student["email"],
         "purpose": OTPPurpose.PASSWORD_RESET,
-        "otp_code": otp_code,
+        "otp_code_hash": hash_secret_value(otp_code),
         "expiry_time": expiry_time,
         "is_used": False,
         "created_at": datetime.utcnow()
@@ -1780,12 +1870,19 @@ async def student_forgot_password_verify_otp(request: ResetPasswordVerify, _: No
     if not student or not student.get("email"):
         raise HTTPException(status_code=401, detail="Invalid OTP")
 
-    otp = await db.otps.find_one({
+    otp_candidates = await db.otps.find({
         "email": student["email"],
         "purpose": OTPPurpose.PASSWORD_RESET,
-        "otp_code": request.otp_code,
         "is_used": False
-    })
+    }).sort("created_at", -1).to_list(20)
+    otp = next(
+        (
+            candidate for candidate in otp_candidates
+            if secret_matches(candidate.get("otp_code_hash"), request.otp_code)
+            or candidate.get("otp_code") == request.otp_code
+        ),
+        None,
+    )
     if not otp:
         raise HTTPException(status_code=401, detail="Invalid OTP")
     if otp["expiry_time"] < datetime.utcnow():
@@ -1794,7 +1891,7 @@ async def student_forgot_password_verify_otp(request: ResetPasswordVerify, _: No
     # Mark OTP as used
     await db.otps.update_one(
         {"_id": otp["_id"]},
-        {"$set": {"is_used": True}}
+        {"$set": {"is_used": True}, "$unset": {"otp_code": ""}}
     )
 
     # Update password
@@ -2438,7 +2535,7 @@ async def send_parcel_otp(request: SendOTPRequest, current_user: dict = Depends(
         "parcel_id": request.parcel_id,
         "purpose": OTPPurpose.PARCEL_DELIVERY,
         "is_used": False
-    }, {"$set": {"is_used": True}})
+    }, {"$set": {"is_used": True}, "$unset": {"otp_code": ""}})
 
     # Generate OTP
     otp_code = generate_otp()
@@ -2449,7 +2546,7 @@ async def send_parcel_otp(request: SendOTPRequest, current_user: dict = Depends(
         "parcel_id": request.parcel_id,
         "email": parcel["student_email"],
         "purpose": OTPPurpose.PARCEL_DELIVERY,
-        "otp_code": otp_code,
+        "otp_code_hash": hash_secret_value(otp_code),
         "expiry_time": expiry_time,
         "is_used": False,
         "created_at": datetime.utcnow()
@@ -2500,12 +2597,19 @@ async def verify_parcel_otp(request: VerifyParcelOTPRequest, current_user: dict 
         raise HTTPException(status_code=400, detail="Parcel must be in PENDING status")
     
     # Find OTP
-    otp = await db.otps.find_one({
+    otp_candidates = await db.otps.find({
         "parcel_id": request.parcel_id,
         "purpose": OTPPurpose.PARCEL_DELIVERY,
-        "otp_code": request.otp_code,
         "is_used": False
-    })
+    }).sort("created_at", -1).to_list(20)
+    otp = next(
+        (
+            candidate for candidate in otp_candidates
+            if secret_matches(candidate.get("otp_code_hash"), request.otp_code)
+            or candidate.get("otp_code") == request.otp_code
+        ),
+        None,
+    )
     
     if not otp:
         raise HTTPException(status_code=401, detail="Invalid OTP")
@@ -2517,7 +2621,7 @@ async def verify_parcel_otp(request: VerifyParcelOTPRequest, current_user: dict 
     # Mark OTP as used
     await db.otps.update_one(
         {"_id": otp["_id"]},
-        {"$set": {"is_used": True}}
+        {"$set": {"is_used": True}, "$unset": {"otp_code": ""}}
     )
     
     # Update parcel status
@@ -2569,9 +2673,10 @@ async def generate_parcel_qr(request: GenerateQRRequest, current_user: dict = De
         {"_id": parcel_object_id},
         {
             "$set": {
-                "qr_pickup_token": qr_token,
+                "qr_pickup_token_hash": hash_secret_value(qr_token),
                 "otp_sent_at": qr_generated_at,
             },
+            "$unset": {"qr_pickup_token": ""},
             "$push": {
                 "status_history": build_status_event(
                     ParcelTimelineEvent.OTP_SENT,
@@ -2609,9 +2714,9 @@ async def generate_delegation(request: GenerateDelegationRequest, current_user: 
     await db.parcels.update_one(
         {"_id": parcel_object_id},
         {"$set": {
-            "delegation_code": delegation_code,
+            "delegation_code_hash": hash_secret_value(delegation_code),
             "delegation_expiry": expiry_time
-        }}
+        }, "$unset": {"delegation_code": ""}}
     )
     
     return {
@@ -2640,15 +2745,26 @@ async def verify_parcel_qr(request: VerifyQRRequest, current_user: dict = Depend
 
     # Security: Ensure this student owns the parcel, OR provided a valid delegation code
     if not is_owner:
-        if not request.delegation_code or parcel.get("delegation_code") != request.delegation_code:
+        stored_delegation_hash = parcel.get("delegation_code_hash")
+        stored_delegation_plain = parcel.get("delegation_code")
+        delegation_matches = (
+            request.delegation_code is not None
+            and (
+                secret_matches(stored_delegation_hash, request.delegation_code)
+                or stored_delegation_plain == request.delegation_code
+            )
+        )
+        if not delegation_matches:
             raise HTTPException(status_code=403, detail="This parcel belongs to a different student")
         delegation_expiry = parcel.get("delegation_expiry")
         if not delegation_expiry or delegation_expiry < datetime.utcnow():
             raise HTTPException(status_code=401, detail="Delegation code has expired")
         
     # Verify the token matches
-    saved_token = parcel.get("qr_pickup_token")
-    if not saved_token or saved_token != request.token:
+    saved_token_hash = parcel.get("qr_pickup_token_hash")
+    saved_token_plain = parcel.get("qr_pickup_token")
+    token_matches = secret_matches(saved_token_hash, request.token) or saved_token_plain == request.token
+    if not token_matches:
         raise HTTPException(status_code=401, detail="Invalid or expired QR code")
         
     # Mark as delivered and clear token and delegation fields
@@ -2684,7 +2800,9 @@ async def verify_parcel_qr(request: VerifyQRRequest, current_user: dict = Depend
             },
             "$unset": {
                 "qr_pickup_token": "",
+                "qr_pickup_token_hash": "",
                 "delegation_code": "",
+                "delegation_code_hash": "",
                 "delegation_expiry": ""
             }
         }

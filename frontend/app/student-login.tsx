@@ -38,6 +38,7 @@ export default function StudentLogin() {
   const [otpSent, setOtpSent] = useState(false);
   const [errorVisible, setErrorVisible] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const isRegisterMode = authMode === 'REGISTER';
 
   // Forgot Password state
@@ -48,6 +49,7 @@ export default function StudentLogin() {
   const [fpOtpSent, setFpOtpSent] = useState(false);
   const [fpLoading, setFpLoading] = useState(false);
   const [fpMaskedEmail, setFpMaskedEmail] = useState('');
+  const [showFpNewPassword, setShowFpNewPassword] = useState(false);
 
   useEffect(() => {
     loadHostelType();
@@ -364,10 +366,17 @@ export default function StudentLogin() {
                   placeholder={isRegisterMode ? "Create a password" : "Enter your password"}
                   value={password}
                   onChangeText={setPassword}
-                  secureTextEntry
+                  secureTextEntry={!showPassword}
                   editable={!otpSent}
                   placeholderTextColor={Colors.textMuted}
                 />
+                <TouchableOpacity onPress={() => setShowPassword((prev) => !prev)} style={styles.eyeIcon}>
+                  <Ionicons
+                    name={showPassword ? 'eye-off-outline' : 'eye-outline'}
+                    size={20}
+                    color={Colors.textMuted}
+                  />
+                </TouchableOpacity>
               </View>
             </View>
 
@@ -518,9 +527,16 @@ export default function StudentLogin() {
                           placeholder="Enter new password"
                           value={fpNewPassword}
                           onChangeText={setFpNewPassword}
-                          secureTextEntry
+                          secureTextEntry={!showFpNewPassword}
                           placeholderTextColor={Colors.textMuted}
                         />
+                        <TouchableOpacity onPress={() => setShowFpNewPassword((prev) => !prev)} style={styles.eyeIcon}>
+                          <Ionicons
+                            name={showFpNewPassword ? 'eye-off-outline' : 'eye-outline'}
+                            size={20}
+                            color={Colors.textMuted}
+                          />
+                        </TouchableOpacity>
                       </View>
                     </View>
                   </>
@@ -677,6 +693,9 @@ const styles = StyleSheet.create({
   },
   inputIcon: {
     marginRight: 12,
+  },
+  eyeIcon: {
+    padding: 8,
   },
   input: {
     flex: 1,
