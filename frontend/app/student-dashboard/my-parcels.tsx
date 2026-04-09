@@ -7,6 +7,7 @@ import {
   Animated,
   TouchableOpacity,
   Modal,
+  Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -187,7 +188,7 @@ export default function MyParcels() {
         onLayout={(event) => setListHeight(event.nativeEvent.layout.height)}
         onScroll={Animated.event(
           [{ nativeEvent: { contentOffset: { y: scrollY } } }],
-          { useNativeDriver: true }
+          { useNativeDriver: Platform.OS !== 'web' }
         )}
         scrollEventThrottle={16}
         snapToInterval={DELIVERED_STACK_CARD_HEIGHT + STACK_CARD_SPACING}

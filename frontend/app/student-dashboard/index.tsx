@@ -9,6 +9,7 @@ import {
   Animated,
   Modal,
   Pressable,
+  Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -393,7 +394,7 @@ export default function StudentDashboardIndex() {
           onLayout={(event) => setListHeight(event.nativeEvent.layout.height)}
           onScroll={Animated.event(
             [{ nativeEvent: { contentOffset: { y: scrollY } } }],
-            { useNativeDriver: true }
+              { useNativeDriver: Platform.OS !== 'web' }
           )}
           scrollEventThrottle={16}
           snapToInterval={STACK_CARD_HEIGHT + STACK_CARD_SPACING}
@@ -527,8 +528,14 @@ export default function StudentDashboardIndex() {
             }}
           />
           
-          <SafeAreaView style={StyleSheet.absoluteFill} pointerEvents="box-none">
-            <View style={styles.cameraHeader} pointerEvents="box-none">
+          <SafeAreaView
+            style={StyleSheet.absoluteFill}
+            {...(Platform.OS !== 'web' ? { pointerEvents: 'box-none' } : {})}
+          >
+            <View
+              style={styles.cameraHeader}
+              {...(Platform.OS !== 'web' ? { pointerEvents: 'box-none' } : {})}
+            >
               <TouchableOpacity
                 style={styles.closeCameraButton}
                 onPress={() => { setScanning(false); setShowDelegateInput(false); setDelegatePin(''); }}
@@ -536,7 +543,10 @@ export default function StudentDashboardIndex() {
                 <Ionicons name="close" size={28} color="#FFF" />
               </TouchableOpacity>
             </View>
-            <View style={styles.cameraOverlay} pointerEvents="box-none">
+            <View
+              style={styles.cameraOverlay}
+              {...(Platform.OS !== 'web' ? { pointerEvents: 'box-none' } : {})}
+            >
               <View style={styles.scanFrame} />
               <Text style={styles.scanInstruction}>
                 Point at the Guard&apos;s QR code

@@ -435,7 +435,7 @@ export default function GuardDashboardIndex() {
           onLayout={(event) => setListHeight(event.nativeEvent.layout.height)}
           onScroll={Animated.event(
             [{ nativeEvent: { contentOffset: { y: scrollY } } }],
-            { useNativeDriver: true }
+            { useNativeDriver: Platform.OS !== 'web' }
           )}
           scrollEventThrottle={16}
           snapToInterval={STACK_CARD_HEIGHT + STACK_CARD_SPACING}

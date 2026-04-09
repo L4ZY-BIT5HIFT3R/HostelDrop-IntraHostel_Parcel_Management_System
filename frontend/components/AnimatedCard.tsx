@@ -27,7 +27,7 @@ export default function AnimatedCard({ children, index = 0, activeIndex, scrollY
     Animated.timing(fadeAnim, {
       toValue: 1,
       duration: 400 + index * 100,
-      useNativeDriver: true,
+      useNativeDriver: Platform.OS !== 'web',
     }).start();
   }, [fadeAnim, index, scrollY]);
 
@@ -96,17 +96,20 @@ export default function AnimatedCard({ children, index = 0, activeIndex, scrollY
     >
       {children}
       <Animated.View
-        pointerEvents="none"
-        style={{
-          position: 'absolute',
-          top: 0,
-          left: 0,
-          right: 0,
-          bottom: 0,
-          borderRadius: 16,
-          overflow: 'hidden',
-          opacity: activeIndex === index ? 0 : blurOpacity,
-        }}
+        {...(Platform.OS !== 'web' ? { pointerEvents: 'none' } : {})}
+        style={[
+          {
+            position: 'absolute',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            borderRadius: 16,
+            overflow: 'hidden',
+            opacity: activeIndex === index ? 0 : blurOpacity,
+          },
+          Platform.OS === 'web' ? ({ pointerEvents: 'none' } as const) : null,
+        ]}
       >
         {Platform.OS === 'android' ? (
           <Animated.View
