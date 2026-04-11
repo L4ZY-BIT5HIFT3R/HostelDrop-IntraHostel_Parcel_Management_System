@@ -11,3 +11,10 @@ npx expo start -c
 .\.venv\Scripts\activate.bat
     python backend\seed_database.py
 python backend\add_sample_parcels.py
+
+## Android Maintenance Routine (Frontend)
+- Open `document/ANDROID_DEPENDENCY_MAINTENANCE_PLAN.md` for weekly/monthly/quarterly schedule.
+- Run from `frontend` directory:
+    - `npm run deps:doctor`
+    - `npm run deps:outdated`
+    - `npm run maintenance:android`
