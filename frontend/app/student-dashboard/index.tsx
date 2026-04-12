@@ -20,6 +20,7 @@ import api, { verifyQrCode, generateDelegationCode } from '../../utils/api';
 import { useAuthStore } from '../../store/authStore';
 import { Colors, MinimalCard } from '../../utils/theme';
 import AnimatedCard, { STACK_CARD_HEIGHT, STACK_CARD_SPACING, STACK_FOCUS_OFFSET } from '../../components/AnimatedCard';
+import { formatDateInIST } from '../../utils/dateTime';
 
 interface Parcel {
   _id: string;
@@ -297,9 +298,9 @@ export default function StudentDashboardIndex() {
               </View>
             </View>
           </View>
-          <Text style={styles.date}>
-            {new Date(item.created_at).toLocaleDateString()}
-          </Text>
+              <Text style={styles.date}>
+                {formatDateInIST(item.created_at)}
+              </Text>
         </View>
 
         {item.student_name && (
