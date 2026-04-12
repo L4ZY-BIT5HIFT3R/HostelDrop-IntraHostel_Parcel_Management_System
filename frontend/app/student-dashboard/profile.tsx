@@ -58,6 +58,12 @@ export default function Profile() {
   const [fpMaskedEmail, setFpMaskedEmail] = useState('');
   const [showFpNewPassword, setShowFpNewPassword] = useState(false);
 
+  // Room change request state
+  const [showRoomChangeModal, setShowRoomChangeModal] = useState(false);
+  const [requestedNewRoom, setRequestedNewRoom] = useState('');
+  const [roomChangeReason, setRoomChangeReason] = useState('');
+  const [roomChangeLoading, setRoomChangeLoading] = useState(false);
+
   const [errorVisible, setErrorVisible] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
 
@@ -197,6 +203,41 @@ export default function Profile() {
     }
   };
 
+  const handleSubmitRoomChangeRequest = async () => {
+    if (!profile?.room_number?.trim()) {
+      setErrorMessage('Current room is not assigned. Please contact admin.');
+      setErrorVisible(true);
+      return;
+    }
+    if (!requestedNewRoom.trim()) {
+      setErrorMessage('Please enter new room number');
+      setErrorVisible(true);
+      return;
+    }
+    if (!roomChangeReason.trim()) {
+      setErrorMessage('Please enter reason to change room');
+      setErrorVisible(true);
+      return;
+    }
+
+    setRoomChangeLoading(true);
+    try {
+      const response = await api.post('/student/room-change-request', {
+        new_room_number: requestedNewRoom.trim(),
+        reason: roomChangeReason.trim(),
+      });
+      Alert.alert('Request Submitted', response.data?.message || 'Room change request submitted to admin.');
+      setShowRoomChangeModal(false);
+      setRequestedNewRoom('');
+      setRoomChangeReason('');
+    } catch (error: any) {
+      setErrorMessage(extractErrorMessage(error, 'Failed to submit room change request.'));
+      setErrorVisible(true);
+    } finally {
+      setRoomChangeLoading(false);
+    }
+  };
+
   const handleLogout = async () => {
     Alert.alert('Logout', 'Are you sure you want to logout?', [
       { text: 'Cancel', style: 'cancel' },
@@ -277,6 +318,20 @@ export default function Profile() {
               'Member Since',
               formatDateInIST(profile.created_at, { year: 'numeric', month: 'long', day: 'numeric' })
             )}
+          </View>
+
+          <View style={styles.infoCard}>
+            <Text style={styles.sectionTitle}>Room Change Request</Text>
+            <Text style={styles.roomChangeHint}>
+              Need to move rooms? Send a request to admin for approval.
+            </Text>
+            <TouchableOpacity
+              style={styles.changePasswordButton}
+              onPress={() => setShowRoomChangeModal(true)}
+            >
+              <Ionicons name="swap-horizontal-outline" size={20} color="#FFF" />
+              <Text style={styles.changePasswordButtonText}>Request Room Change</Text>
+            </TouchableOpacity>
           </View>
 
           {/* Change Password Section */}
@@ -496,6 +551,84 @@ export default function Profile() {
         </View>
       </Modal>
 
+      <Modal
+        visible={showRoomChangeModal}
+        animationType="slide"
+        transparent={true}
+        onRequestClose={() => setShowRoomChangeModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <KeyboardAvoidingView
+            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+            style={styles.modalKeyboard}
+          >
+            <View style={styles.modalContent}>
+              <View style={styles.modalHeader}>
+                <Text style={styles.modalTitle}>Room Change Request</Text>
+                <TouchableOpacity onPress={() => setShowRoomChangeModal(false)}>
+                  <Ionicons name="close" size={24} color={Colors.textPrimary} />
+                </TouchableOpacity>
+              </View>
+
+              <ScrollView
+                showsVerticalScrollIndicator={false}
+                keyboardShouldPersistTaps="handled"
+                contentContainerStyle={{ gap: 20 }}
+              >
+                <View style={styles.inputContainer}>
+                  <Text style={styles.inputLabel}>Current Room (non-editable)</Text>
+                  <View style={[styles.inputWrapper, styles.readonlyInput]}>
+                    <Ionicons name="home-outline" size={20} color={Colors.textMuted} style={styles.inputIcon} />
+                    <Text style={styles.readonlyInputText}>{profile?.room_number || '-'}</Text>
+                  </View>
+                </View>
+
+                <View style={styles.inputContainer}>
+                  <Text style={styles.inputLabel}>New Room Number</Text>
+                  <View style={styles.inputWrapper}>
+                    <Ionicons name="home-outline" size={20} color={Colors.textMuted} style={styles.inputIcon} />
+                    <TextInput
+                      style={styles.input}
+                      placeholder="e.g., 207"
+                      value={requestedNewRoom}
+                      onChangeText={setRequestedNewRoom}
+                      placeholderTextColor={Colors.textMuted}
+                    />
+                  </View>
+                </View>
+
+                <View style={styles.inputContainer}>
+                  <Text style={styles.inputLabel}>Reason to Change</Text>
+                  <View style={[styles.inputWrapper, styles.reasonTextInputWrapper]}>
+                    <TextInput
+                      style={[styles.input, styles.reasonTextInput]}
+                      placeholder="Write reason for room change request"
+                      value={roomChangeReason}
+                      onChangeText={setRoomChangeReason}
+                      multiline
+                      numberOfLines={4}
+                      placeholderTextColor={Colors.textMuted}
+                    />
+                  </View>
+                </View>
+
+                <TouchableOpacity
+                  style={[styles.saveButton, roomChangeLoading && styles.saveButtonDisabled]}
+                  onPress={handleSubmitRoomChangeRequest}
+                  disabled={roomChangeLoading}
+                >
+                  {roomChangeLoading ? (
+                    <ActivityIndicator color="#FFF" />
+                  ) : (
+                    <Text style={styles.saveButtonText}>Submit Request</Text>
+                  )}
+                </TouchableOpacity>
+              </ScrollView>
+            </View>
+          </KeyboardAvoidingView>
+        </View>
+      </Modal>
+
       <ErrorPopup
         visible={errorVisible}
         message={errorMessage}
@@ -589,6 +722,12 @@ const styles = StyleSheet.create({
     color: Colors.textPrimary,
     marginBottom: 4,
   },
+  roomChangeHint: {
+    fontSize: 13,
+    color: Colors.textSecondary,
+    marginTop: -4,
+    marginBottom: 2,
+  },
   infoRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -661,6 +800,24 @@ const styles = StyleSheet.create({
     height: 48,
     fontSize: 15,
     color: Colors.textPrimary,
+  },
+  readonlyInput: {
+    backgroundColor: Colors.surface,
+  },
+  readonlyInputText: {
+    flex: 1,
+    fontSize: 15,
+    color: Colors.textSecondary,
+    fontWeight: '600',
+  },
+  reasonTextInputWrapper: {
+    alignItems: 'flex-start',
+    minHeight: 104,
+    paddingTop: 10,
+  },
+  reasonTextInput: {
+    minHeight: 84,
+    textAlignVertical: 'top',
   },
   saveButton: {
     backgroundColor: Colors.accent,

@@ -34,6 +34,8 @@ import httpx
 from collections import defaultdict
 from collections import deque
 import threading
+from pymongo import ReturnDocument
+from contextlib import asynccontextmanager
 
 # Configure logging early so startup config warnings are visible.
 logging.basicConfig(
@@ -48,7 +50,10 @@ load_dotenv(ROOT_DIR / '.env')
 # MongoDB connection
 mongo_url = os.environ['MONGO_URL']
 client = AsyncIOMotorClient(mongo_url)
-db = client[os.environ['DB_NAME']]
+PRIMARY_DB_NAME = os.environ['DB_NAME']
+LEFT_USERS_DB_NAME = os.environ.get('LEFT_USERS_DB_NAME', f"{PRIMARY_DB_NAME}_left_users")
+db = client[PRIMARY_DB_NAME]
+left_users_db = client[LEFT_USERS_DB_NAME]
 
 # Password hashing
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
@@ -93,7 +98,28 @@ STUDENT_EMAIL_DOMAIN = os.environ.get("STUDENT_EMAIL_DOMAIN", "iiitg.ac.in").str
 security = HTTPBearer()
 
 # Create the main app
-app = FastAPI(title="Hostel Parcel Management System")
+@asynccontextmanager
+async def app_lifespan(_: FastAPI):
+    global auto_delete_task
+    await ensure_database_indexes()
+    await ensure_admin_user()
+    if not auto_delete_task or auto_delete_task.done():
+        auto_delete_task = asyncio.create_task(periodic_delivered_cleanup())
+
+    try:
+        yield
+    finally:
+        if auto_delete_task:
+            auto_delete_task.cancel()
+            try:
+                await auto_delete_task
+            except asyncio.CancelledError:
+                pass
+            auto_delete_task = None
+        client.close()
+
+
+app = FastAPI(title="Hostel Parcel Management System", lifespan=app_lifespan)
 
 # Create a router with the /api prefix
 api_router = APIRouter(prefix="/api")
@@ -168,6 +194,26 @@ AUTO_DELETE_STATE = {
     "last_deleted_count": 0,
 }
 auto_delete_task: Optional[asyncio.Task] = None
+
+IST_TIMEZONE = timezone(timedelta(hours=5, minutes=30))
+
+ROOM_CHANGE_REQUEST_DAILY_LIMIT = max(
+    1,
+    int(os.environ.get("ROOM_CHANGE_REQUEST_DAILY_LIMIT", "50"))
+)
+STUDENT_NOTIFICATION_TTL_SECONDS = max(
+    60,
+    int(os.environ.get("STUDENT_NOTIFICATION_TTL_SECONDS", str(5 * 24 * 60 * 60)))
+)
+
+ROOM_CHANGE_REQUESTS_COLLECTION = "room_change_requests"
+ROOM_CHANGE_DAILY_COUNTER_COLLECTION = "room_change_request_daily_counters"
+STUDENT_NOTIFICATIONS_COLLECTION = "student_notifications"
+LEFT_STUDENTS_ARCHIVE_COLLECTION = "left_students_archive"
+LEFT_STUDENT_RETENTION_DAYS = max(
+    1,
+    int(os.environ.get("LEFT_STUDENT_RETENTION_DAYS", "14"))
+)
 
 # ============= Models =============
 
@@ -601,6 +647,33 @@ class DeactivateStudentRequest(SanitizedRequestModel):
     @classmethod
     def validate_reason(cls, value: str) -> str:
         return _validate_reason(value)
+
+
+class CreateRoomChangeRequest(SanitizedRequestModel):
+    new_room_number: str
+    reason: str
+
+    @field_validator("new_room_number")
+    @classmethod
+    def validate_new_room_number(cls, value: str) -> str:
+        return _validate_room_number(value)
+
+    @field_validator("reason")
+    @classmethod
+    def validate_reason(cls, value: str) -> str:
+        return _validate_reason(value)
+
+
+class ResolveRoomChangeRequest(SanitizedRequestModel):
+    action: str
+
+    @field_validator("action")
+    @classmethod
+    def validate_action(cls, value: str) -> str:
+        cleaned = value.strip().upper()
+        if cleaned not in {"ACCEPT", "DENY"}:
+            raise ValueError("Action must be ACCEPT or DENY")
+        return cleaned
 
 
 class AddParcelRequest(SanitizedRequestModel):
@@ -1102,6 +1175,51 @@ async def seed_student_room_assignment(
     )
     await db.room_assignments.insert_one(assignment_doc)
 
+
+def get_ist_day_window_utc(now: Optional[datetime] = None) -> Dict[str, datetime]:
+    current_utc = now or datetime.utcnow()
+    current_aware = ensure_utc_datetime(current_utc)
+    current_ist = current_aware.astimezone(IST_TIMEZONE)
+    day_start_ist = current_ist.replace(hour=0, minute=0, second=0, microsecond=0)
+    next_day_ist = day_start_ist + timedelta(days=1)
+
+    day_start_utc = day_start_ist.astimezone(timezone.utc).replace(tzinfo=None)
+    next_day_utc = next_day_ist.astimezone(timezone.utc).replace(tzinfo=None)
+    return {
+        "start": day_start_utc,
+        "end": next_day_utc,
+        "start_ist": day_start_ist,
+        "end_ist": next_day_ist,
+    }
+
+
+async def create_student_notification(
+    student: Dict[str, Any],
+    title: str,
+    message: str,
+    metadata: Optional[Dict[str, Any]] = None,
+) -> None:
+    now = datetime.utcnow()
+    notification_doc: Dict[str, Any] = {
+        "student_id": str(student["_id"]),
+        "roll_number": student.get("roll_number"),
+        "hostel_type": student.get("hostel_type"),
+        "title": title,
+        "message": message,
+        "metadata": metadata or {},
+        "created_at": now,
+    }
+    await db[STUDENT_NOTIFICATIONS_COLLECTION].insert_one(notification_doc)
+
+    push_token = student.get("expoPushToken")
+    if push_token:
+        await send_expo_push_notification(
+            [push_token],
+            title,
+            message,
+            metadata or None,
+        )
+
 class InMemoryRateLimiter:
     """Simple in-memory sliding-window rate limiter with periodic cleanup."""
 
@@ -1196,6 +1314,18 @@ def ensure_utc_datetime(value: datetime) -> datetime:
 
 def serialize_datetime_utc(value: datetime) -> str:
     return ensure_utc_datetime(value).isoformat().replace("+00:00", "Z")
+
+
+def serialize_datetime_ist(value: datetime) -> str:
+    return ensure_utc_datetime(value).astimezone(IST_TIMEZONE).isoformat()
+
+
+def compute_ist_retention_expiry_utc(from_utc: datetime, retention_days: int) -> datetime:
+    """Compute retention expiry based on IST calendar time and return naive UTC datetime for Mongo TTL."""
+    source_aware = ensure_utc_datetime(from_utc)
+    source_ist = source_aware.astimezone(IST_TIMEZONE)
+    expiry_ist = source_ist + timedelta(days=retention_days)
+    return expiry_ist.astimezone(timezone.utc).replace(tzinfo=None)
 
 
 def normalize_datetime_values(value: Any) -> Any:
@@ -1462,6 +1592,45 @@ async def ensure_admin_user():
     }
     await db.users.insert_one(admin_user)
 
+
+async def ensure_database_indexes() -> None:
+    await db[TOKEN_REVOCATIONS_COLLECTION].create_index(
+        "expires_at",
+        expireAfterSeconds=0,
+    )
+    await db[ROOM_CHANGE_REQUESTS_COLLECTION].create_index(
+        [("status", 1), ("hostel_type", 1), ("created_at", 1)],
+        name="room_change_requests_pending_lookup",
+    )
+    await db[ROOM_CHANGE_DAILY_COUNTER_COLLECTION].create_index(
+        "day_start",
+        unique=True,
+        name="room_change_daily_counter_unique_day",
+    )
+    await db[ROOM_CHANGE_DAILY_COUNTER_COLLECTION].create_index(
+        "created_at",
+        expireAfterSeconds=max(86400, 3 * 24 * 60 * 60),
+        name="room_change_daily_counter_ttl",
+    )
+    await db[STUDENT_NOTIFICATIONS_COLLECTION].create_index(
+        [("student_id", 1), ("created_at", -1)],
+        name="student_notifications_lookup",
+    )
+    await db[STUDENT_NOTIFICATIONS_COLLECTION].create_index(
+        "created_at",
+        expireAfterSeconds=STUDENT_NOTIFICATION_TTL_SECONDS,
+        name="student_notifications_ttl",
+    )
+    await left_users_db[LEFT_STUDENTS_ARCHIVE_COLLECTION].create_index(
+        "source_user_id",
+        name="left_students_archive_source_user_lookup",
+    )
+    await left_users_db[LEFT_STUDENTS_ARCHIVE_COLLECTION].create_index(
+        "expires_at",
+        expireAfterSeconds=0,
+        name="left_students_archive_ttl",
+    )
+
 async def send_parcel_notification(email: str, student_name: str, room_number: str):
     """Send notification email when parcel is logged"""
     try:
@@ -1516,8 +1685,8 @@ async def get_auto_delete_status() -> dict:
         sort=[("delivered_at", 1)],
     )
 
-    next_run_at = None
-    remaining_seconds = AUTO_DELETE_DELIVERED_INTERVAL_SECONDS
+    next_run_at: Optional[datetime] = None
+    remaining_seconds = 0
     has_pending_cleanup = False
 
     if oldest_delivered and oldest_delivered.get("delivered_at"):
@@ -1530,13 +1699,14 @@ async def get_auto_delete_status() -> dict:
     return {
         "enabled": True,
         "interval_seconds": AUTO_DELETE_DELIVERED_INTERVAL_SECONDS,
-        "next_run_at": next_run_at.isoformat() + "Z" if next_run_at else None,
+        "next_run_at": serialize_datetime_ist(next_run_at) if next_run_at else None,
         "remaining_seconds": remaining_seconds,
         "has_pending_cleanup": has_pending_cleanup,
         "last_run_at": (
-            AUTO_DELETE_STATE["last_run_at"].isoformat() + "Z"
+            serialize_datetime_ist(AUTO_DELETE_STATE["last_run_at"])
             if AUTO_DELETE_STATE["last_run_at"] else None
         ),
+        "server_time_ist": serialize_datetime_ist(now),
         "last_deleted_count": AUTO_DELETE_STATE["last_deleted_count"],
     }
 
@@ -1964,6 +2134,231 @@ async def student_profile(current_user: dict = Depends(get_current_user)):
     student.pop("password", None)
     return {"student": student}
 
+
+@api_router.post("/student/room-change-request")
+async def create_room_change_request(
+    request: CreateRoomChangeRequest,
+    current_user: dict = Depends(get_current_user),
+):
+    """Student creates a room change request for admin review."""
+    if current_user["role"] != UserRole.STUDENT:
+        raise HTTPException(status_code=403, detail="Only students can create room change requests")
+
+    require_active_account(current_user)
+    current_room = (current_user.get("room_number") or "").strip()
+    if not current_room:
+        raise HTTPException(status_code=400, detail="Current room is not assigned")
+    if current_room == request.new_room_number:
+        raise HTTPException(status_code=400, detail="New room must be different from current room")
+
+    student_id = str(current_user["_id"])
+    existing_pending = await db[ROOM_CHANGE_REQUESTS_COLLECTION].find_one({
+        "student_id": student_id,
+        "status": "PENDING",
+    })
+    if existing_pending:
+        raise HTTPException(status_code=409, detail="You already have a pending room change request")
+
+    day_window = get_ist_day_window_utc()
+    counter = await db[ROOM_CHANGE_DAILY_COUNTER_COLLECTION].find_one_and_update(
+        {"day_start": day_window["start"]},
+        {
+            "$inc": {"count": 1},
+            "$setOnInsert": {
+                "day_start": day_window["start"],
+                "created_at": datetime.utcnow(),
+            },
+            "$set": {"updated_at": datetime.utcnow()},
+        },
+        upsert=True,
+        return_document=ReturnDocument.AFTER,
+    )
+
+    if (counter or {}).get("count", 0) > ROOM_CHANGE_REQUEST_DAILY_LIMIT:
+        await db[ROOM_CHANGE_DAILY_COUNTER_COLLECTION].update_one(
+            {"_id": counter["_id"]},
+            {"$inc": {"count": -1}, "$set": {"updated_at": datetime.utcnow()}},
+        )
+        raise HTTPException(
+            status_code=429,
+            detail=(
+                "Room change request limit reached for today. "
+                f"Please try after {day_window['end_ist'].strftime('%Y-%m-%d %H:%M:%S IST')}."
+            ),
+        )
+
+    room_change_doc = {
+        "student_id": student_id,
+        "roll_number": current_user.get("roll_number"),
+        "student_name": current_user.get("name"),
+        "hostel_type": current_user.get("hostel_type"),
+        "current_room_number": current_room,
+        "new_room_number": request.new_room_number,
+        "reason": request.reason,
+        "status": "PENDING",
+        "created_at": datetime.utcnow(),
+    }
+    try:
+        result = await db[ROOM_CHANGE_REQUESTS_COLLECTION].insert_one(room_change_doc)
+    except Exception:
+        if counter and counter.get("_id"):
+            await db[ROOM_CHANGE_DAILY_COUNTER_COLLECTION].update_one(
+                {"_id": counter["_id"]},
+                {"$inc": {"count": -1}, "$set": {"updated_at": datetime.utcnow()}},
+            )
+        raise
+
+    return {
+        "message": "Room change request submitted successfully",
+        "request_id": str(result.inserted_id),
+        "current_room_number": current_room,
+    }
+
+
+@api_router.get("/student/notifications")
+async def get_student_notifications(current_user: dict = Depends(get_current_user)):
+    """Student fetches in-app notifications."""
+    if current_user["role"] != UserRole.STUDENT:
+        raise HTTPException(status_code=403, detail="Only students can access notifications")
+
+    notifications = await db[STUDENT_NOTIFICATIONS_COLLECTION].find(
+        {"student_id": str(current_user["_id"])}
+    ).sort("created_at", -1).to_list(200)
+
+    serialized = []
+    for notification in notifications:
+        notification["_id"] = str(notification["_id"])
+        serialized.append(normalize_datetime_values(notification))
+
+    return {"notifications": serialized}
+
+
+@api_router.get("/admin/room-change-requests")
+async def list_room_change_requests(
+    hostel_type: Optional[str] = ApiQuery(default=None, max_length=16),
+    current_user: dict = Depends(get_current_user),
+):
+    """Admin gets pending room change requests."""
+    require_admin(current_user)
+    query: Dict[str, Any] = {"status": "PENDING"}
+    if hostel_type:
+        query["hostel_type"] = validate_hostel_type(hostel_type)
+
+    requests_cursor = db[ROOM_CHANGE_REQUESTS_COLLECTION].find(query).sort("created_at", 1)
+    requests = await requests_cursor.to_list(1000)
+    serialized = []
+    for item in requests:
+        item["_id"] = str(item["_id"])
+        serialized.append(normalize_datetime_values(item))
+    return {"requests": serialized}
+
+
+@api_router.patch("/admin/room-change-request/{request_id}")
+async def resolve_room_change_request(
+    request_id: str = ApiPath(..., min_length=24, max_length=24),
+    request: ResolveRoomChangeRequest = ...,
+    current_user: dict = Depends(get_current_user),
+):
+    """Admin accepts or denies a room change request."""
+    require_admin(current_user)
+    request_object_id = parse_object_id(request_id, "room change request ID")
+
+    room_change_request = await db[ROOM_CHANGE_REQUESTS_COLLECTION].find_one({
+        "_id": request_object_id,
+        "status": "PENDING",
+    })
+    if not room_change_request:
+        raise HTTPException(status_code=404, detail="Room change request not found")
+
+    student = await db.users.find_one({
+        "_id": parse_object_id(room_change_request["student_id"], "student ID"),
+        "role": UserRole.STUDENT,
+    })
+    if not student:
+        await db[ROOM_CHANGE_REQUESTS_COLLECTION].delete_one({"_id": request_object_id})
+        raise HTTPException(status_code=404, detail="Student not found for this request")
+
+    action = request.action
+    now = datetime.utcnow()
+
+    if action == "ACCEPT":
+        if student.get("is_active") is False:
+            raise HTTPException(status_code=400, detail="Student account is inactive")
+
+        student_id = str(student["_id"])
+        current_room = (student.get("room_number") or "").strip()
+        target_room = room_change_request["new_room_number"]
+
+        if current_room and current_room != target_room:
+            await close_active_room_assignment(
+                student_id=student_id,
+                status=RoomAssignmentStatus.TRANSFERRED,
+                reason=room_change_request["reason"],
+                actor=current_user,
+                ended_at=now,
+            )
+
+            assignment_doc = build_room_assignment_doc(
+                student=student,
+                room_number=target_room,
+                status=RoomAssignmentStatus.ACTIVE,
+                reason=room_change_request["reason"],
+                actor=current_user,
+                started_at=now,
+            )
+            await db.room_assignments.insert_one(assignment_doc)
+
+        await db.users.update_one(
+            {"_id": student["_id"]},
+            {
+                "$set": {
+                    "room_number": target_room,
+                    "updated_at": now,
+                    "is_active": True,
+                },
+                "$unset": {
+                    "left_at": "",
+                    "left_reason": "",
+                },
+            },
+        )
+
+        await create_student_notification(
+            student=student,
+            title="Room Change Request Approved",
+            message=(
+                f"Your room change request has been approved. "
+                f"New room: {target_room}."
+            ),
+            metadata={
+                "type": "ROOM_CHANGE_REQUEST",
+                "action": "ACCEPT",
+                "new_room_number": target_room,
+            },
+        )
+
+    else:
+        await create_student_notification(
+            student=student,
+            title="Room Change Request Denied",
+            message="Your room change request has been denied by admin.",
+            metadata={
+                "type": "ROOM_CHANGE_REQUEST",
+                "action": "DENY",
+                "requested_room_number": room_change_request.get("new_room_number"),
+            },
+        )
+
+    await db[ROOM_CHANGE_REQUESTS_COLLECTION].delete_one({"_id": request_object_id})
+
+    return {
+        "message": (
+            "Room change request accepted and student notified"
+            if action == "ACCEPT"
+            else "Room change request denied and student notified"
+        )
+    }
+
 # ============= Admin Routes =============
 
 @api_router.post("/admin/add-user")
@@ -2149,19 +2544,28 @@ async def deactivate_student(
         ended_at=now,
     )
 
-    await db.users.update_one(
-        {"_id": student["_id"]},
-        {
-            "$set": {
-                "is_active": False,
-                "room_number": None,
-                "left_at": now,
-                "left_reason": request.reason,
-                "updated_at": now,
-                "expoPushToken": None,
-            }
-        },
-    )
+    retention_expires_at = compute_ist_retention_expiry_utc(now, LEFT_STUDENT_RETENTION_DAYS)
+    archived_doc: Dict[str, Any] = {
+        "source_user_id": str(student["_id"]),
+        "name": student.get("name"),
+        "roll_number": student.get("roll_number"),
+        "email": student.get("email"),
+        "contact_number": student.get("contact_number"),
+        "hostel_type": student.get("hostel_type"),
+        "room_number_before_leaving": student.get("room_number"),
+        "left_at": now,
+        "left_reason": request.reason,
+        "archived_at": now,
+        "expires_at": retention_expires_at,
+        "archived_by_user_id": str(current_user["_id"]),
+        "archived_by_role": current_user.get("role"),
+    }
+    await left_users_db[LEFT_STUDENTS_ARCHIVE_COLLECTION].insert_one(archived_doc)
+
+    await db.users.delete_one({"_id": student["_id"]})
+
+    await db[ROOM_CHANGE_REQUESTS_COLLECTION].delete_many({"student_id": student_id})
+    await db[STUDENT_NOTIFICATIONS_COLLECTION].delete_many({"student_id": student_id})
 
     student_email = (student.get("email") or "").strip()
     if student_email:
@@ -2171,10 +2575,11 @@ async def deactivate_student(
         )
 
     return {
-        "message": "Student deactivated successfully",
+        "message": "Student marked as left and archived successfully",
         "roll_number": request.roll_number,
         "hostel_type": hostel_type,
-        "left_at": now,
+        "left_at": serialize_datetime_ist(now),
+        "archive_expires_at": serialize_datetime_ist(retention_expires_at),
     }
 
 
@@ -2959,22 +3364,3 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-@app.on_event("shutdown")
-async def shutdown_db_client():
-    global auto_delete_task
-    if auto_delete_task:
-        auto_delete_task.cancel()
-        try:
-            await auto_delete_task
-        except asyncio.CancelledError:
-            pass
-        auto_delete_task = None
-    client.close()
-
-@app.on_event("startup")
-async def startup_seed_admin():
-    global auto_delete_task
-    await ensure_admin_user()
-    if not auto_delete_task or auto_delete_task.done():
-        auto_delete_task = asyncio.create_task(periodic_delivered_cleanup())
