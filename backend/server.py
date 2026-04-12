@@ -11,7 +11,7 @@ from pathlib import Path as FsPath
 from pydantic import BaseModel, EmailStr, ConfigDict, field_validator, model_validator
 from typing import List, Optional, Dict, Any
 import uuid
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import random
 import string
 import re
@@ -1176,7 +1176,7 @@ def build_status_event(
 ) -> Dict[str, Any]:
     event_doc: Dict[str, Any] = {
         "event": event,
-        "timestamp": timestamp or datetime.utcnow() + timedelta(hours=5, minutes=30),
+        "timestamp": timestamp or datetime.utcnow(),
     }
     if actor:
         if actor.get("_id"):
@@ -1186,6 +1186,26 @@ def build_status_event(
     if meta:
         event_doc["meta"] = meta
     return event_doc
+
+
+def ensure_utc_datetime(value: datetime) -> datetime:
+    if value.tzinfo is None:
+        return value.replace(tzinfo=timezone.utc)
+    return value.astimezone(timezone.utc)
+
+
+def serialize_datetime_utc(value: datetime) -> str:
+    return ensure_utc_datetime(value).isoformat().replace("+00:00", "Z")
+
+
+def normalize_datetime_values(value: Any) -> Any:
+    if isinstance(value, datetime):
+        return serialize_datetime_utc(value)
+    if isinstance(value, dict):
+        return {key: normalize_datetime_values(item) for key, item in value.items()}
+    if isinstance(value, list):
+        return [normalize_datetime_values(item) for item in value]
+    return value
 
 def ensure_status_history(parcel: Dict[str, Any]) -> List[Dict[str, Any]]:
     event_order = {
@@ -1216,7 +1236,7 @@ def ensure_status_history(parcel: Dict[str, Any]) -> List[Dict[str, Any]]:
                     timestamp = parcel.get("assigned_at") or parcel.get("updated_at")
                 else:
                     timestamp = parcel.get("created_at")
-                event_doc["timestamp"] = timestamp or datetime.utcnow() + timedelta(hours=5, minutes=30)
+                event_doc["timestamp"] = timestamp or datetime.utcnow()
             normalized.append(event_doc)
 
     if not normalized:
@@ -1271,7 +1291,7 @@ def serialize_parcel(parcel: Dict[str, Any]) -> Dict[str, Any]:
     parcel.pop("delegation_code_hash", None)
     parcel.pop("delegation_expiry", None)
     parcel["status_history"] = ensure_status_history(parcel)
-    return parcel
+    return normalize_datetime_values(parcel)
 
 async def auto_link_parcels_for_student(student: Dict[str, Any]) -> int:
     """

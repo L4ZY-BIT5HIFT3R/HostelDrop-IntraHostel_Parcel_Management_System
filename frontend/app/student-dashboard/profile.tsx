@@ -20,6 +20,7 @@ import { useAuthStore } from '../../store/authStore';
 import { Colors, MinimalCard, MinimalInput } from '../../utils/theme';
 import ErrorPopup from '../../components/ErrorPopup';
 import { extractErrorMessage } from '../../utils/errorMessage';
+import { formatDateInIST } from '../../utils/dateTime';
 
 interface StudentProfile {
   _id: string;
@@ -274,7 +275,7 @@ export default function Profile() {
             {profile?.created_at && renderInfoRow(
               'calendar-outline',
               'Member Since',
-              new Date(profile.created_at).toLocaleDateString('en-IN', { year: 'numeric', month: 'long', day: 'numeric' })
+              formatDateInIST(profile.created_at, { year: 'numeric', month: 'long', day: 'numeric' })
             )}
           </View>
 

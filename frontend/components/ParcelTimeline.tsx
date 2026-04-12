@@ -1,6 +1,7 @@
 import React, { useMemo } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { Colors } from '../utils/theme';
+import { formatDateTimeInIST } from '../utils/dateTime';
 
 type TimelineEvent = {
   event?: string;
@@ -39,14 +40,7 @@ const parseDate = (value?: string) => {
 };
 
 const formatTimestamp = (value?: string) => {
-  const parsed = parseDate(value);
-  if (!parsed) return 'Waiting';
-  return parsed.toLocaleString([], {
-    day: '2-digit',
-    month: 'short',
-    hour: '2-digit',
-    minute: '2-digit',
-  });
+  return formatDateTimeInIST(value);
 };
 
 export default function ParcelTimeline({
