@@ -29,10 +29,21 @@ interface AutoDeleteStatus {
   last_deleted_count: number;
 }
 
+interface RoomChangeRequestItem {
+  _id: string;
+  student_name?: string;
+  roll_number?: string;
+  hostel_type: 'BOYS' | 'GIRLS';
+  current_room_number: string;
+  new_room_number: string;
+  reason: string;
+  created_at: string;
+}
+
 export default function AdminPanel() {
   const router = useRouter();
   const { logout } = useAuthStore();
-  const [activeTab, setActiveTab] = useState<'USER_MANAGEMENT' | 'STUDENT_LIFECYCLE' | 'PARCEL_LIFECYCLE'>('USER_MANAGEMENT');
+  const [activeTab, setActiveTab] = useState<'USER_MANAGEMENT' | 'STUDENT_LIFECYCLE' | 'PARCEL_LIFECYCLE' | 'REQUESTS'>('USER_MANAGEMENT');
   const [selectedRole, setSelectedRole] = useState<'GUARD' | 'STUDENT'>('GUARD');
   const [hostelType, setHostelType] = useState<'BOYS' | 'GIRLS'>('BOYS');
   const [loading, setLoading] = useState(false);
@@ -44,6 +55,9 @@ export default function AdminPanel() {
   const [summaryLoading, setSummaryLoading] = useState(false);
   const [autoDeleteStatus, setAutoDeleteStatus] = useState<AutoDeleteStatus | null>(null);
   const [statusLoading, setStatusLoading] = useState(false);
+  const [roomChangeRequests, setRoomChangeRequests] = useState<RoomChangeRequestItem[]>([]);
+  const [requestsLoading, setRequestsLoading] = useState(false);
+  const [requestActionLoadingId, setRequestActionLoadingId] = useState<string | null>(null);
 
   // Guard fields
   const [guardName, setGuardName] = useState('');
@@ -251,12 +265,46 @@ export default function AdminPanel() {
     ]);
   }, [fetchAutoDeleteStatus, fetchDeliveredSummary]);
 
+  const fetchRoomChangeRequests = useCallback(async (showError = true) => {
+    setRequestsLoading(true);
+    try {
+      const response = await api.get('/admin/room-change-requests', {
+        params: { hostel_type: hostelType },
+      });
+      setRoomChangeRequests(response.data?.requests || []);
+    } catch (error: any) {
+      if (showError) {
+        Alert.alert('Error', extractErrorMessage(error, 'Failed to load room change requests'));
+      }
+    } finally {
+      setRequestsLoading(false);
+    }
+  }, [hostelType]);
+
+  const handleResolveRoomChangeRequest = async (
+    requestId: string,
+    action: 'ACCEPT' | 'DENY'
+  ) => {
+    setRequestActionLoadingId(requestId);
+    try {
+      const response = await api.patch(`/admin/room-change-request/${requestId}`, {
+        action,
+      });
+      Alert.alert('Success', response.data?.message || 'Request handled successfully');
+      await fetchRoomChangeRequests(false);
+    } catch (error: any) {
+      Alert.alert('Error', extractErrorMessage(error, 'Failed to handle request'));
+    } finally {
+      setRequestActionLoadingId(null);
+    }
+  };
+
   useEffect(() => {
     void refreshCleanupStatus();
 
     const countdownInterval = setInterval(() => {
       setAutoDeleteStatus((current) => {
-        if (!current) {
+        if (!current || !current.has_pending_cleanup) {
           return current;
         }
         return {
@@ -282,6 +330,12 @@ export default function AdminPanel() {
     void refreshCleanupStatus(false);
   }, [autoDeleteStatus, refreshCleanupStatus]);
 
+  useEffect(() => {
+    if (activeTab === 'REQUESTS') {
+      void fetchRoomChangeRequests(false);
+    }
+  }, [activeTab, hostelType, fetchRoomChangeRequests]);
+
   const formatCountdown = (remainingSeconds: number | undefined) => {
     const safeSeconds = Math.max(0, remainingSeconds ?? 0);
     const days = Math.floor(safeSeconds / 86400);
@@ -305,7 +359,9 @@ export default function AdminPanel() {
       ? 'User Management'
       : activeTab === 'STUDENT_LIFECYCLE'
         ? 'Student Flow'
-        : 'Parcel Flow';
+        : activeTab === 'PARCEL_LIFECYCLE'
+          ? 'Parcel Flow'
+          : 'Requests';
 
   const handleDeleteDeliveredParcels = async (targetHostel: 'BOYS' | 'GIRLS') => {
     confirmAction(
@@ -679,10 +735,16 @@ export default function AdminPanel() {
                     </View>
                   </View>
                 <Text style={styles.autoDeleteCountdown}>
-                  {statusLoading && !autoDeleteStatus ? 'Loading...' : formatCountdown(autoDeleteStatus?.remaining_seconds)}
+                  {statusLoading && !autoDeleteStatus
+                    ? 'Loading...'
+                    : autoDeleteStatus?.has_pending_cleanup
+                      ? formatCountdown(autoDeleteStatus?.remaining_seconds)
+                      : 'No Pending Cleanup'}
                 </Text>
                 <Text style={styles.autoDeleteMeta}>
-                  Last cleanup deleted {autoDeleteStatus?.last_deleted_count ?? 0} parcel(s).
+                  {autoDeleteStatus?.has_pending_cleanup
+                    ? 'Next deletion countdown is based on the oldest delivered parcel.'
+                    : 'Countdown starts only when at least one delivered parcel exists.'}
                 </Text>
               </View>
               <View style={styles.summaryRow}>
@@ -732,6 +794,76 @@ export default function AdminPanel() {
               </View>
             </View>
           )}
+
+          {activeTab === 'REQUESTS' && (
+            <View style={styles.section}>
+              <View style={styles.requestsHeaderRow}>
+                <Text style={styles.sectionTitle}>Room Change Requests</Text>
+                <TouchableOpacity
+                  style={styles.refreshButtonInline}
+                  onPress={() => fetchRoomChangeRequests()}
+                  disabled={requestsLoading}
+                  activeOpacity={0.8}
+                >
+                  {requestsLoading ? (
+                    <ActivityIndicator size="small" color={Colors.accent} />
+                  ) : (
+                    <Ionicons name="refresh" size={18} color={Colors.accent} />
+                  )}
+                </TouchableOpacity>
+              </View>
+              <Text style={styles.sectionHint}>
+                Review and handle room change requests for {hostelType === 'BOYS' ? 'Boys' : 'Girls'} hostel.
+              </Text>
+
+              {requestsLoading && roomChangeRequests.length === 0 ? (
+                <View style={styles.loadingBlock}>
+                  <ActivityIndicator color={Colors.accent} />
+                  <Text style={styles.loadingBlockText}>Loading requests...</Text>
+                </View>
+              ) : roomChangeRequests.length === 0 ? (
+                <View style={styles.emptyRequestsCard}>
+                  <Ionicons name="checkmark-done-outline" size={20} color={Colors.textSecondary} />
+                  <Text style={styles.emptyRequestsText}>No pending requests.</Text>
+                </View>
+              ) : (
+                roomChangeRequests.map((item) => {
+                  const isActing = requestActionLoadingId === item._id;
+                  return (
+                    <View key={item._id} style={styles.requestCard}>
+                      <Text style={styles.requestStudentName}>{item.student_name || 'Student'}</Text>
+                      <Text style={styles.requestMeta}>Roll: {item.roll_number || '-'}</Text>
+                      <Text style={styles.requestMeta}>Current Room: {item.current_room_number}</Text>
+                      <Text style={styles.requestMeta}>Requested Room: {item.new_room_number}</Text>
+                      <Text style={styles.requestReason}>Reason: {item.reason}</Text>
+
+                      <View style={styles.actionRow}>
+                        <TouchableOpacity
+                          style={[styles.submitButton, styles.actionButton, isActing && styles.submitButtonDisabled]}
+                          disabled={isActing}
+                          onPress={() => handleResolveRoomChangeRequest(item._id, 'ACCEPT')}
+                        >
+                          {isActing ? (
+                            <ActivityIndicator color="#FFFFFF" />
+                          ) : (
+                            <Text style={styles.submitButtonText}>Accept</Text>
+                          )}
+                        </TouchableOpacity>
+
+                        <TouchableOpacity
+                          style={[styles.dangerButton, styles.actionButton, isActing && styles.submitButtonDisabled]}
+                          disabled={isActing}
+                          onPress={() => handleResolveRoomChangeRequest(item._id, 'DENY')}
+                        >
+                          <Text style={styles.dangerButtonText}>Deny</Text>
+                        </TouchableOpacity>
+                      </View>
+                    </View>
+                  );
+                })
+              )}
+            </View>
+          )}
         </ScrollView>
 
         <View style={styles.bottomTaskbar}>
@@ -771,6 +903,19 @@ export default function AdminPanel() {
               name="cube-outline"
               size={22}
               color={activeTab === 'PARCEL_LIFECYCLE' ? Colors.accent : Colors.textMuted}
+            />
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[styles.bottomTaskButton, activeTab === 'REQUESTS' && styles.bottomTaskButtonActive]}
+            onPress={() => setActiveTab('REQUESTS')}
+            activeOpacity={0.8}
+            accessibilityLabel="Room change requests tab"
+          >
+            <Ionicons
+              name="mail-open-outline"
+              size={22}
+              color={activeTab === 'REQUESTS' ? Colors.accent : Colors.textMuted}
             />
           </TouchableOpacity>
         </View>
@@ -878,6 +1023,61 @@ const styles = StyleSheet.create({
     color: Colors.textSecondary,
     marginTop: -8,
     marginBottom: 12,
+  },
+  requestsHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  refreshButtonInline: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    borderWidth: 1,
+    borderColor: Colors.surfaceBorder,
+    backgroundColor: Colors.surface,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  requestCard: {
+    ...GlassCard,
+    marginBottom: 12,
+    padding: 14,
+    gap: 6,
+  },
+  requestStudentName: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: Colors.textPrimary,
+  },
+  requestMeta: {
+    fontSize: 13,
+    color: Colors.textSecondary,
+  },
+  requestReason: {
+    fontSize: 13,
+    color: Colors.textPrimary,
+    marginTop: 4,
+  },
+  loadingBlock: {
+    ...GlassCard,
+    padding: 16,
+    alignItems: 'center',
+    gap: 10,
+  },
+  loadingBlockText: {
+    fontSize: 14,
+    color: Colors.textSecondary,
+  },
+  emptyRequestsCard: {
+    ...GlassCard,
+    padding: 16,
+    alignItems: 'center',
+    gap: 8,
+  },
+  emptyRequestsText: {
+    fontSize: 14,
+    color: Colors.textSecondary,
   },
   summaryRow: {
     flexDirection: 'row',

@@ -1,11 +1,30 @@
 import { Stack } from 'expo-router';
 import { useEffect } from 'react';
+import { Platform, Text, TextInput } from 'react-native';
 import { useAuthStore } from '../store/authStore';
+
+const APP_FONT_FAMILY = Platform.select({
+  ios: 'Avenir Next',
+  android: 'sans-serif',
+  default: 'System',
+});
+
+let hasAppliedGlobalFontDefaults = false;
 
 export default function RootLayout() {
   const checkAuth = useAuthStore((state) => state.checkAuth);
 
   useEffect(() => {
+    if (APP_FONT_FAMILY && !hasAppliedGlobalFontDefaults) {
+      Text.defaultProps = Text.defaultProps || {};
+      Text.defaultProps.style = [Text.defaultProps.style, { fontFamily: APP_FONT_FAMILY }];
+
+      TextInput.defaultProps = TextInput.defaultProps || {};
+      TextInput.defaultProps.style = [TextInput.defaultProps.style, { fontFamily: APP_FONT_FAMILY }];
+
+      hasAppliedGlobalFontDefaults = true;
+    }
+
     checkAuth();
   }, [checkAuth]);
 

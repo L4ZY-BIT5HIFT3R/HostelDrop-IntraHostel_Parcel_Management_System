@@ -10,6 +10,7 @@ import {
   Modal,
   Pressable,
   Platform,
+  ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -32,6 +33,13 @@ interface Parcel {
   roll_number?: string;
   description?: string;
   student_id?: string;
+  created_at: string;
+}
+
+interface StudentNotification {
+  _id: string;
+  title: string;
+  message: string;
   created_at: string;
 }
 
@@ -73,6 +81,9 @@ export default function StudentDashboardIndex() {
   const [showDelegateInput, setShowDelegateInput] = useState(false);
   const [delegatePin, setDelegatePin] = useState('');
   const [codeCopied, setCodeCopied] = useState(false);
+  const [notificationsVisible, setNotificationsVisible] = useState(false);
+  const [notificationsLoading, setNotificationsLoading] = useState(false);
+  const [notifications, setNotifications] = useState<StudentNotification[]>([]);
   const [appAlert, setAppAlert] = useState<AppAlertState>({
     visible: false,
     title: '',
@@ -146,6 +157,23 @@ export default function StudentDashboardIndex() {
   const handleRefresh = () => {
     setRefreshing(true);
     fetchParcels();
+  };
+
+  const openNotifications = async () => {
+    setNotificationsVisible(true);
+    setNotificationsLoading(true);
+    try {
+      const response = await api.get('/student/notifications');
+      setNotifications(response.data?.notifications || []);
+    } catch {
+      showAppAlert({
+        title: 'Notifications',
+        message: 'Failed to load notifications. Please try again.',
+        variant: 'error',
+      });
+    } finally {
+      setNotificationsLoading(false);
+    }
   };
 
   const getStackPadding = (height: number) => ({
@@ -344,9 +372,14 @@ export default function StudentDashboardIndex() {
           <Text style={styles.headerTitle}>All Parcels</Text>
           <Text style={styles.headerSubtitle}>{user?.hostel_type} Hostel</Text>
         </View>
-        <TouchableOpacity style={styles.logoutButton} onPress={handleLogout}>
-          <Ionicons name="log-out-outline" size={24} color={Colors.accentRed} />
-        </TouchableOpacity>
+        <View style={styles.headerActionGroup}>
+          <TouchableOpacity style={styles.notificationButton} onPress={openNotifications}>
+            <Ionicons name="notifications-outline" size={22} color={Colors.textPrimary} />
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.logoutButton} onPress={handleLogout}>
+            <Ionicons name="log-out-outline" size={24} color={Colors.accentRed} />
+          </TouchableOpacity>
+        </View>
       </View>
 
       <View style={{ paddingHorizontal: 24, paddingTop: 16 }}>
@@ -517,6 +550,50 @@ export default function StudentDashboardIndex() {
         </View>
       </Modal>
 
+      <Modal
+        visible={notificationsVisible}
+        animationType="slide"
+        transparent
+        onRequestClose={() => setNotificationsVisible(false)}
+      >
+        <View style={styles.notificationsOverlay}>
+          <View style={styles.notificationsSheet}>
+            <View style={styles.notificationsHeader}>
+              <Text style={styles.notificationsTitle}>Notifications</Text>
+              <TouchableOpacity onPress={() => setNotificationsVisible(false)}>
+                <Ionicons name="close" size={24} color={Colors.textPrimary} />
+              </TouchableOpacity>
+            </View>
+
+            {notificationsLoading ? (
+              <View style={styles.notificationsLoadingState}>
+                <ActivityIndicator color={Colors.accent} />
+                <Text style={styles.notificationsHintText}>Loading notifications...</Text>
+              </View>
+            ) : notifications.length === 0 ? (
+              <View style={styles.notificationsLoadingState}>
+                <Ionicons name="mail-open-outline" size={24} color={Colors.textMuted} />
+                <Text style={styles.notificationsHintText}>No notifications yet.</Text>
+              </View>
+            ) : (
+              <Animated.FlatList
+                data={notifications}
+                keyExtractor={(item) => item._id}
+                renderItem={({ item }) => (
+                  <View style={styles.notificationItem}>
+                    <Text style={styles.notificationTitle}>{item.title}</Text>
+                    <Text style={styles.notificationMessage}>{item.message}</Text>
+                    <Text style={styles.notificationDate}>{formatDateInIST(item.created_at)}</Text>
+                  </View>
+                )}
+                contentContainerStyle={styles.notificationsList}
+                showsVerticalScrollIndicator={false}
+              />
+            )}
+          </View>
+        </View>
+      </Modal>
+
       {/* Full Screen Camera Modal */}
       {scanning && (
         <View style={StyleSheet.absoluteFill}>
@@ -615,6 +692,21 @@ const styles = StyleSheet.create({
   },
   logoutButton: {
     padding: 8,
+  },
+  headerActionGroup: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  notificationButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: Colors.surfaceBorder,
+    backgroundColor: Colors.surface,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   content: {
     flex: 1,
@@ -953,5 +1045,63 @@ const styles = StyleSheet.create({
   },
   appAlertButtonTextDestructive: {
     color: Colors.error,
+  },
+  notificationsOverlay: {
+    flex: 1,
+    backgroundColor: Colors.overlay,
+    justifyContent: 'flex-end',
+  },
+  notificationsSheet: {
+    maxHeight: '75%',
+    backgroundColor: Colors.bg,
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    borderWidth: 1,
+    borderColor: Colors.surfaceBorder,
+    padding: 16,
+  },
+  notificationsHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 12,
+  },
+  notificationsTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: Colors.textPrimary,
+  },
+  notificationsList: {
+    paddingBottom: 12,
+  },
+  notificationsLoadingState: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 10,
+    paddingVertical: 28,
+  },
+  notificationsHintText: {
+    fontSize: 14,
+    color: Colors.textSecondary,
+  },
+  notificationItem: {
+    ...MinimalCard,
+    marginBottom: 10,
+    padding: 12,
+    gap: 6,
+  },
+  notificationTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: Colors.textPrimary,
+  },
+  notificationMessage: {
+    fontSize: 13,
+    color: Colors.textSecondary,
+    lineHeight: 18,
+  },
+  notificationDate: {
+    fontSize: 12,
+    color: Colors.textMuted,
   },
 });
