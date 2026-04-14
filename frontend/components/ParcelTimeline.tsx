@@ -21,15 +21,13 @@ type TimelineProps = {
 const TIMELINE_STEPS = [
   { key: 'LOGGED', label: 'Logged' },
   { key: 'ASSIGNED', label: 'Assigned' },
-  { key: 'OTP_SENT', label: 'OTP Sent' },
   { key: 'DELIVERED', label: 'Delivered' },
 ];
 
 const STEP_ORDER: Record<string, number> = {
   LOGGED: 0,
   ASSIGNED: 1,
-  OTP_SENT: 2,
-  DELIVERED: 3,
+  DELIVERED: 2,
 };
 
 const parseDate = (value?: string) => {
@@ -83,7 +81,6 @@ export default function ParcelTimeline({
       }
     }
 
-    if (!map.OTP_SENT && otpSentAt) map.OTP_SENT = otpSentAt;
     if (!map.DELIVERED && deliveredAt) map.DELIVERED = deliveredAt;
 
     return map;
