@@ -34,6 +34,9 @@ export default function RootLayout() {
       animation: 'fade' as const 
     }}>
       <Stack.Screen name="index" />
+      <Stack.Screen name="notice-board" />
+      <Stack.Screen name="terms-and-conditions" />
+      <Stack.Screen name="privacy-policy" />
       <Stack.Screen name="role-selection" />
       <Stack.Screen name="hostel-selection" />
       <Stack.Screen name="guard-login" />
