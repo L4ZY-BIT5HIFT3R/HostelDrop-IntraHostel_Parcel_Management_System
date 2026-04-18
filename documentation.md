@@ -205,7 +205,7 @@ Rate-limit behavior is controlled and stable. Auth latency rises under throttle 
 | Errors | 0.00% in final scenario summaries | 3.17% overall, concentrated in login | 0.00% failures |
 | Key latency profile | Strong p95 across scenarios | Workflow fast, login slow under throttle | Login slow under throttle, workflow stable |
 
-## 9. Formal Conclusion
+## 9. Conclusion
 1. Previous Grafana k6 testing confirms strong backend resilience under ramp, spike, soak, breakpoint, and input-growth workloads.
 2. Current Locust performance testing confirms stable authenticated business workflow endpoints.
 3. Current Locust rate-limit testing confirms expected throttling behavior with stable downstream operations.
