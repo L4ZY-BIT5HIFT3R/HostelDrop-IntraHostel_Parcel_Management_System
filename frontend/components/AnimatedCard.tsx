@@ -7,17 +7,98 @@ export const STACK_CARD_SPACING = 4;
 export const STACK_FOCUS_OFFSET = 56;
 
 const CARD_STEP = STACK_CARD_HEIGHT + STACK_CARD_SPACING;
+const PULSE_DURATION_MS = 1700;
+const DRIFT_DURATION_MS = 2200;
+const SETTLE_DURATION_MS = 520;
 
 type Props = {
   children: React.ReactNode;
   index?: number;
   activeIndex?: number;
   scrollY?: Animated.Value;
+  status?: string;
   style?: StyleProp<ViewStyle>;
 };
 
-export default function AnimatedCard({ children, index = 0, activeIndex, scrollY, style }: Props) {
+export default function AnimatedCard({ children, index = 0, activeIndex, scrollY, status, style }: Props) {
   const fadeAnim = React.useRef(new Animated.Value(0)).current;
+  const pulseAnim = React.useRef(new Animated.Value(0)).current;
+  const driftAnim = React.useRef(new Animated.Value(0)).current;
+  const settleAnim = React.useRef(new Animated.Value(1)).current;
+
+  React.useEffect(() => {
+    if (status !== 'PENDING') {
+      pulseAnim.stopAnimation();
+      pulseAnim.setValue(0);
+      return;
+    }
+
+    const pulseLoop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(pulseAnim, {
+          toValue: 1,
+          duration: PULSE_DURATION_MS,
+          useNativeDriver: Platform.OS !== 'web',
+        }),
+        Animated.timing(pulseAnim, {
+          toValue: 0,
+          duration: PULSE_DURATION_MS,
+          useNativeDriver: Platform.OS !== 'web',
+        }),
+      ])
+    );
+
+    pulseLoop.start();
+
+    return () => {
+      pulseLoop.stop();
+    };
+  }, [pulseAnim, status]);
+
+  React.useEffect(() => {
+    if (status !== 'UNASSIGNED') {
+      driftAnim.stopAnimation();
+      driftAnim.setValue(0);
+      return;
+    }
+
+    const driftLoop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(driftAnim, {
+          toValue: 1,
+          duration: DRIFT_DURATION_MS,
+          useNativeDriver: Platform.OS !== 'web',
+        }),
+        Animated.timing(driftAnim, {
+          toValue: 0,
+          duration: DRIFT_DURATION_MS,
+          useNativeDriver: Platform.OS !== 'web',
+        }),
+      ])
+    );
+
+    driftLoop.start();
+
+    return () => {
+      driftLoop.stop();
+    };
+  }, [driftAnim, status]);
+
+  React.useEffect(() => {
+    if (status !== 'DELIVERED') {
+      settleAnim.stopAnimation();
+      settleAnim.setValue(1);
+      return;
+    }
+
+    settleAnim.setValue(0);
+    Animated.timing(settleAnim, {
+      toValue: 1,
+      duration: SETTLE_DURATION_MS,
+      useNativeDriver: Platform.OS !== 'web',
+    }).start();
+  }, [settleAnim, status]);
+
   React.useEffect(() => {
     if (scrollY) {
       return;
@@ -31,11 +112,37 @@ export default function AnimatedCard({ children, index = 0, activeIndex, scrollY
     }).start();
   }, [fadeAnim, index, scrollY]);
 
+  const pulseScale = pulseAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: [1, 1.009],
+  });
+  const driftTranslateY = driftAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0, -1],
+  });
+  const settleScale = settleAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0.996, 1],
+  });
+
+  const shouldPulse = status === 'PENDING' && (activeIndex === undefined || activeIndex === index);
+  const shouldDrift = status === 'UNASSIGNED' && (activeIndex === undefined || activeIndex === index);
+
   if (!scrollY) {
+    const entryScale = status === 'DELIVERED' ? settleScale : 1;
+    const idleScale = shouldPulse ? pulseScale : 1;
+    const combinedScale = Animated.multiply(idleScale, entryScale);
+
     return (
       <Animated.View 
         style={[
-          { opacity: fadeAnim },
+          {
+            opacity: fadeAnim,
+            transform: [
+              { translateY: shouldDrift ? driftTranslateY : 0 },
+              { scale: combinedScale },
+            ],
+          },
           style
         ]}
       >
@@ -79,12 +186,18 @@ export default function AnimatedCard({ children, index = 0, activeIndex, scrollY
 
   const distanceFromActive = activeIndex === undefined ? 0 : Math.abs(activeIndex - index);
   const stackLayer = 1000 - distanceFromActive;
+  const statusScale = shouldPulse ? pulseScale : 1;
+  const deliveredScale = status === 'DELIVERED' ? settleScale : 1;
+  const computedScale = Animated.multiply(Animated.multiply(scale, statusScale), deliveredScale);
+  const computedTranslateY = shouldDrift
+    ? Animated.add(stackTranslateY, driftTranslateY)
+    : stackTranslateY;
 
   return (
     <Animated.View
       style={[
         {
-          transform: [{ translateY: stackTranslateY }, { scale }],
+          transform: [{ translateY: computedTranslateY }, { scale: computedScale }],
           opacity: activeIndex === index ? 1 : cardOpacity,
           marginBottom: STACK_CARD_SPACING,
           overflow: 'visible',

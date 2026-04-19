@@ -11,16 +11,24 @@ const APP_FONT_FAMILY = Platform.select({
 
 let hasAppliedGlobalFontDefaults = false;
 
+type TextDefaultsTarget = typeof Text & { defaultProps?: { style?: unknown } };
+type TextInputDefaultsTarget = typeof TextInput & { defaultProps?: { style?: unknown } };
+
 export default function RootLayout() {
   const checkAuth = useAuthStore((state) => state.checkAuth);
 
   useEffect(() => {
     if (APP_FONT_FAMILY && !hasAppliedGlobalFontDefaults) {
-      Text.defaultProps = Text.defaultProps || {};
-      Text.defaultProps.style = [Text.defaultProps.style, { fontFamily: APP_FONT_FAMILY }];
+      const textComponent = Text as TextDefaultsTarget;
+      textComponent.defaultProps = textComponent.defaultProps || {};
+      textComponent.defaultProps.style = [textComponent.defaultProps.style, { fontFamily: APP_FONT_FAMILY }];
 
-      TextInput.defaultProps = TextInput.defaultProps || {};
-      TextInput.defaultProps.style = [TextInput.defaultProps.style, { fontFamily: APP_FONT_FAMILY }];
+      const textInputComponent = TextInput as TextInputDefaultsTarget;
+      textInputComponent.defaultProps = textInputComponent.defaultProps || {};
+      textInputComponent.defaultProps.style = [
+        textInputComponent.defaultProps.style,
+        { fontFamily: APP_FONT_FAMILY },
+      ];
 
       hasAppliedGlobalFontDefaults = true;
     }

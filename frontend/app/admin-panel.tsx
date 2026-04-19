@@ -3,7 +3,6 @@ import {
   View,
   Text,
   StyleSheet,
-  TextInput,
   TouchableOpacity,
   KeyboardAvoidingView,
   Platform,
@@ -17,6 +16,8 @@ import { Ionicons } from '@expo/vector-icons';
 import api from '../utils/api';
 import { useAuthStore } from '../store/authStore';
 import { Colors, GlassCard, GlassInput } from '../utils/theme';
+import GlassTextInput from '../components/GlassInput';
+import AppHeader from '../components/AppHeader';
 import { extractErrorMessage } from '../utils/errorMessage';
 
 interface AutoDeleteStatus {
@@ -63,7 +64,6 @@ export default function AdminPanel() {
   const [guardName, setGuardName] = useState('');
   const [guardUsername, setGuardUsername] = useState('');
   const [guardPassword, setGuardPassword] = useState('');
-  const [showGuardPassword, setShowGuardPassword] = useState(false);
 
   // Student fields
   const [studentName, setStudentName] = useState('');
@@ -408,21 +408,22 @@ export default function AdminPanel() {
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         style={styles.keyboardView}
       >
-        <View style={styles.header}>
-          <View style={styles.headerTitleBlock}>
-            <TouchableOpacity style={styles.backButton} onPress={handleBackToCommonDashboard}>
-              <Ionicons name="arrow-back" size={20} color={Colors.textPrimary} />
-              <Text style={styles.backButtonText}></Text>
-            </TouchableOpacity>
-            <Text style={styles.headerTitle}>Admin Panel</Text>
-            <Text style={styles.headerSubtitle}>Administrative Controls • {activeTabLabel}</Text>
-          </View>
-          <View style={styles.headerActions}>
-            <TouchableOpacity style={styles.logoutButton} onPress={handleLogout}>
-              <Ionicons name="log-out-outline" size={24} color={Colors.accentRed} />
-            </TouchableOpacity>
-          </View>
-        </View>
+        <AppHeader
+          title="Admin Panel"
+          subtitle={`Administrative Controls • ${activeTabLabel}`}
+          containerStyle={styles.header}
+          titleStyle={styles.headerTitle}
+          subtitleStyle={styles.headerSubtitle}
+          onBackPress={handleBackToCommonDashboard}
+          actions={[
+            {
+              icon: 'log-out-outline',
+              color: Colors.accentRed,
+              onPress: handleLogout,
+              accessibilityLabel: 'Logout',
+            },
+          ]}
+        />
 
         <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
           <View style={styles.section}>
@@ -523,92 +524,82 @@ export default function AdminPanel() {
                 {selectedRole === 'GUARD' ? (
                   <View style={styles.form}>
                     <View style={styles.inputGroup}>
-                      <Text style={styles.inputLabel}>Name *</Text>
-                      <TextInput
-                        style={styles.textInput}
+                      <GlassTextInput
+                        label="Name *"
+                        inputType="text"
                         placeholder="Enter guard name"
                         value={guardName}
                         onChangeText={setGuardName}
-                        placeholderTextColor={Colors.textMuted}
+                        containerStyle={styles.inputContainer}
                       />
                     </View>
 
                     <View style={styles.inputGroup}>
-                      <Text style={styles.inputLabel}>Username *</Text>
-                      <TextInput
-                        style={styles.textInput}
+                      <GlassTextInput
+                        label="Username *"
+                        inputType="text"
                         placeholder="Enter username"
                         value={guardUsername}
                         onChangeText={setGuardUsername}
                         autoCapitalize="none"
-                        placeholderTextColor={Colors.textMuted}
+                        containerStyle={styles.inputContainer}
                       />
                     </View>
 
                     <View style={styles.inputGroup}>
-                      <Text style={styles.inputLabel}>Password *</Text>
-                      <TextInput
-                        style={styles.textInput}
+                      <GlassTextInput
+                        label="Password *"
+                        inputType="password"
                         placeholder="Enter password"
                         value={guardPassword}
                         onChangeText={setGuardPassword}
-                        secureTextEntry={!showGuardPassword}
-                        placeholderTextColor={Colors.textMuted}
+                        containerStyle={styles.inputContainer}
                       />
-                      <TouchableOpacity onPress={() => setShowGuardPassword((prev) => !prev)} style={styles.eyeIcon}>
-                        <Ionicons
-                          name={showGuardPassword ? 'eye-off-outline' : 'eye-outline'}
-                          size={20}
-                          color={Colors.textMuted}
-                        />
-                      </TouchableOpacity>
                     </View>
                   </View>
                 ) : (
                   <View style={styles.form}>
                     <View style={styles.inputGroup}>
-                      <Text style={styles.inputLabel}>Name *</Text>
-                      <TextInput
-                        style={styles.textInput}
+                      <GlassTextInput
+                        label="Name *"
+                        inputType="text"
                         placeholder="Enter student name"
                         value={studentName}
                         onChangeText={setStudentName}
-                        placeholderTextColor={Colors.textMuted}
+                        containerStyle={styles.inputContainer}
                       />
                     </View>
 
                     <View style={styles.inputGroup}>
-                      <Text style={styles.inputLabel}>Roll Number *</Text>
-                      <TextInput
-                        style={styles.textInput}
+                      <GlassTextInput
+                        label="Roll Number *"
+                        inputType="text"
                         placeholder="e.g., 2021001"
                         value={studentRollNumber}
                         onChangeText={setStudentRollNumber}
-                        placeholderTextColor={Colors.textMuted}
+                        containerStyle={styles.inputContainer}
                       />
                     </View>
 
                     <View style={styles.inputGroup}>
-                      <Text style={styles.inputLabel}>Email *</Text>
-                      <TextInput
-                        style={styles.textInput}
+                      <GlassTextInput
+                        label="Email *"
+                        inputType="email"
                         placeholder="ab.c@iiitg.ac.in"
                         value={studentEmail}
                         onChangeText={setStudentEmail}
-                        autoCapitalize="none"
-                        keyboardType="email-address"
-                        placeholderTextColor={Colors.textMuted}
+                        containerStyle={styles.inputContainer}
                       />
                     </View>
 
                     <View style={styles.inputGroup}>
-                      <Text style={styles.inputLabel}>Room Number *</Text>
-                      <TextInput
-                        style={styles.textInput}
+                      <GlassTextInput
+                        label="Room Number *"
+                        inputType="numeric"
                         placeholder="e.g., 101"
                         value={studentRoomNumber}
                         onChangeText={setStudentRoomNumber}
-                        placeholderTextColor={Colors.textMuted}
+                        containerStyle={styles.inputContainer}
                       />
                     </View>
                   </View>
@@ -641,38 +632,39 @@ export default function AdminPanel() {
 
               <View style={styles.form}>
                 <View style={styles.inputGroup}>
-                  <Text style={styles.inputLabel}>Student Roll Number *</Text>
-                  <TextInput
-                    style={styles.textInput}
+                  <GlassTextInput
+                    label="Student Roll Number *"
+                    inputType="text"
                     placeholder="e.g., 2021001"
                     value={targetRollNumber}
                     onChangeText={setTargetRollNumber}
                     autoCapitalize="characters"
-                    placeholderTextColor={Colors.textMuted}
+                    containerStyle={styles.inputContainer}
                   />
                 </View>
 
                 <View style={styles.inputGroup}>
-                  <Text style={styles.inputLabel}>New Room Number (for transfer)</Text>
-                  <TextInput
-                    style={styles.textInput}
+                  <GlassTextInput
+                    label="New Room Number (for transfer)"
+                    inputType="numeric"
                     placeholder="e.g., 205"
                     value={targetNewRoomNumber}
                     onChangeText={setTargetNewRoomNumber}
-                    placeholderTextColor={Colors.textMuted}
+                    containerStyle={styles.inputContainer}
                   />
                 </View>
 
                 <View style={styles.inputGroup}>
-                  <Text style={styles.inputLabel}>Reason *</Text>
-                  <TextInput
-                    style={[styles.textInput, styles.reasonInput]}
+                  <GlassTextInput
+                    label="Reason *"
+                    inputType="text"
                     placeholder="e.g., Hostel relocation due to room reallocation"
                     value={targetReason}
                     onChangeText={setTargetReason}
                     multiline
                     numberOfLines={3}
-                    placeholderTextColor={Colors.textMuted}
+                    containerStyle={styles.inputContainer}
+                    inputContainerStyle={styles.reasonInput}
                   />
                 </View>
               </View>
@@ -1209,6 +1201,9 @@ const styles = StyleSheet.create({
   },
   form: {
     gap: 16,
+  },
+  inputContainer: {
+    marginBottom: 0,
   },
   inputGroup: {
     gap: 8,

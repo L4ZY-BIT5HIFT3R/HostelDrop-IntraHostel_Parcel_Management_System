@@ -18,3 +18,19 @@ python backend\add_sample_parcels.py
     - `npm run deps:doctor`
     - `npm run deps:outdated`
     - `npm run maintenance:android`
+
+## Environment Variable Security
+- Never commit real secret values to Git (`.env`, `.env.local`, `.env.production`, etc.).
+- Use committed templates only:
+    - `backend/.env.example`
+    - `frontend/.env.example`
+- Local setup:
+    - Copy `backend/.env.example` to `backend/.env` and fill values.
+    - Copy `frontend/.env.example` to `frontend/.env` (only `EXPO_PUBLIC_*` values; no secrets).
+- Production setup:
+    - Do not rely on repository `.env` files.
+    - Inject env vars from your deployment secret manager/CI/CD settings.
+    - Keep `APP_ENV=production` and use a strong `JWT_SECRET_KEY` (at least `MIN_JWT_SECRET_LENGTH`).
+- Before pushing code, verify no env files are tracked:
+    - `git status --ignored`
+    - `git ls-files | findstr /R "\\.env$ \\.env\\."`

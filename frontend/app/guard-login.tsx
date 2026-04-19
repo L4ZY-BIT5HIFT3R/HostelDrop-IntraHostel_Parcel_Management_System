@@ -3,7 +3,6 @@ import {
   View,
   Text,
   StyleSheet,
-  TextInput,
   TouchableOpacity,
   KeyboardAvoidingView,
   Platform,
@@ -16,8 +15,9 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import api from '../utils/api';
 import { useAuthStore } from '../store/authStore';
 import ErrorPopup from '../components/ErrorPopup';
-import { Colors, MinimalInput } from '../utils/theme';
-import { extractErrorMessage } from '../utils/errorMessage';
+import GlassInput from '../components/GlassInput';
+import { Colors } from '../utils/theme';
+import { extractErrorCode, extractErrorMessage } from '../utils/errorMessage';
 
 export default function GuardLogin() {
   const router = useRouter();
@@ -26,9 +26,10 @@ export default function GuardLogin() {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
-  const [showPassword, setShowPassword] = useState(false);
+  const [fieldErrors, setFieldErrors] = useState<{ username?: string; password?: string }>({});
   const [errorVisible, setErrorVisible] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
+  const [errorCode, setErrorCode] = useState<string | null>(null);
 
   useEffect(() => {
     loadHostelType();
@@ -39,9 +40,25 @@ export default function GuardLogin() {
     setHostelType(hostel || '');
   };
 
+  const validateForm = () => {
+    const nextErrors: { username?: string; password?: string } = {};
+
+    if (!username.trim()) {
+      nextErrors.username = 'Username is required';
+    }
+
+    if (!password.trim()) {
+      nextErrors.password = 'Password is required';
+    }
+
+    setFieldErrors(nextErrors);
+    return Object.keys(nextErrors).length === 0;
+  };
+
   const handleLogin = async () => {
-    if (!username.trim() || !password.trim()) {
-      setErrorMessage('Please enter username and password');
+    if (!validateForm()) {
+      setErrorMessage('Please fix the highlighted fields.');
+      setErrorCode(null);
       setErrorVisible(true);
       return;
     }
@@ -58,6 +75,7 @@ export default function GuardLogin() {
       router.replace('/guard-dashboard');
     } catch (error: any) {
       setErrorMessage(extractErrorMessage(error, 'Invalid credentials. Try again.'));
+      setErrorCode(extractErrorCode(error));
       setErrorVisible(true);
     } finally {
       setLoading(false);
@@ -90,45 +108,38 @@ export default function GuardLogin() {
           </View>
 
           <View style={styles.form}>
-            <View style={styles.inputContainer}>
-              <Text style={styles.label}>Username</Text>
-              <View style={styles.inputWrapper}>
-                <Ionicons name="person-outline" size={20} color={Colors.textMuted} style={styles.inputIcon} />
-                <TextInput
-                  style={styles.input}
-                  placeholder="Enter your username"
-                  value={username}
-                  onChangeText={setUsername}
-                  autoCapitalize="none"
-                  placeholderTextColor={Colors.textMuted}
-                />
-              </View>
-            </View>
+            <GlassInput
+              label="Username"
+              leftIconName="person-outline"
+              inputType="text"
+              placeholder="Enter your username"
+              value={username}
+              onChangeText={(text) => {
+                setUsername(text);
+                if (fieldErrors.username) {
+                  setFieldErrors((prev) => ({ ...prev, username: undefined }));
+                }
+              }}
+              error={fieldErrors.username}
+              autoCapitalize="none"
+              containerStyle={styles.inputContainer}
+            />
 
-            <View style={styles.inputContainer}>
-              <Text style={styles.label}>Password</Text>
-              <View style={styles.inputWrapper}>
-                <Ionicons name="lock-closed-outline" size={20} color={Colors.textMuted} style={styles.inputIcon} />
-                <TextInput
-                  style={styles.input}
-                  placeholder="Enter your password"
-                  value={password}
-                  onChangeText={setPassword}
-                  secureTextEntry={!showPassword}
-                  placeholderTextColor={Colors.textMuted}
-                />
-                <TouchableOpacity
-                  onPress={() => setShowPassword(!showPassword)}
-                  style={styles.eyeIcon}
-                >
-                  <Ionicons
-                    name={showPassword ? 'eye-off-outline' : 'eye-outline'}
-                    size={20}
-                    color={Colors.textMuted}
-                  />
-                </TouchableOpacity>
-              </View>
-            </View>
+            <GlassInput
+              label="Password"
+              leftIconName="lock-closed-outline"
+              inputType="password"
+              placeholder="Enter your password"
+              value={password}
+              onChangeText={(text) => {
+                setPassword(text);
+                if (fieldErrors.password) {
+                  setFieldErrors((prev) => ({ ...prev, password: undefined }));
+                }
+              }}
+              error={fieldErrors.password}
+              containerStyle={styles.inputContainer}
+            />
 
             <TouchableOpacity
               style={[styles.loginButton, loading && styles.loginButtonDisabled]}
@@ -149,7 +160,14 @@ export default function GuardLogin() {
       <ErrorPopup
         visible={errorVisible}
         message={errorMessage}
-        onClose={() => setErrorVisible(false)}
+        code={errorCode}
+        retryLabel="Retry Login"
+        dismissLabel="Dismiss"
+        onRetry={handleLogin}
+        onClose={() => {
+          setErrorVisible(false);
+          setErrorCode(null);
+        }}
       />
     </SafeAreaView>
   );
@@ -207,30 +225,7 @@ const styles = StyleSheet.create({
     gap: 24,
   },
   inputContainer: {
-    gap: 8,
-  },
-  label: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: Colors.textPrimary,
-  },
-  inputWrapper: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    ...MinimalInput,
-    paddingHorizontal: 16,
-  },
-  inputIcon: {
-    marginRight: 12,
-  },
-  input: {
-    flex: 1,
-    height: 52,
-    fontSize: 16,
-    color: Colors.textPrimary,
-  },
-  eyeIcon: {
-    padding: 8,
+    gap: 0,
   },
   loginButton: {
     backgroundColor: Colors.accent,

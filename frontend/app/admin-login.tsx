@@ -3,7 +3,6 @@ import {
   View,
   Text,
   StyleSheet,
-  TextInput,
   TouchableOpacity,
   KeyboardAvoidingView,
   Platform,
@@ -14,7 +13,8 @@ import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import api from '../utils/api';
 import { useAuthStore } from '../store/authStore';
-import { Colors, MinimalInput } from '../utils/theme';
+import GlassInput from '../components/GlassInput';
+import { Colors } from '../utils/theme';
 import { extractErrorMessage } from '../utils/errorMessage';
 
 export default function AdminLogin() {
@@ -23,12 +23,29 @@ export default function AdminLogin() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
-  const [showPassword, setShowPassword] = useState(false);
+  const [fieldErrors, setFieldErrors] = useState<{ email?: string; password?: string }>({});
   const [errorMessage, setErrorMessage] = useState('');
 
+  const validateForm = () => {
+    const nextErrors: { email?: string; password?: string } = {};
+
+    if (!email.trim()) {
+      nextErrors.email = 'Email is required';
+    } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) {
+      nextErrors.email = 'Enter a valid email address';
+    }
+
+    if (!password.trim()) {
+      nextErrors.password = 'Password is required';
+    }
+
+    setFieldErrors(nextErrors);
+    return Object.keys(nextErrors).length === 0;
+  };
+
   const handleLogin = async () => {
-    if (!email.trim() || !password.trim()) {
-      setErrorMessage('Please enter email and password');
+    if (!validateForm()) {
+      setErrorMessage('Please fix the highlighted fields.');
       return;
     }
 
@@ -69,46 +86,37 @@ export default function AdminLogin() {
           </View>
 
           <View style={styles.form}>
-            <View style={styles.inputContainer}>
-              <Text style={styles.label}>Email</Text>
-              <View style={styles.inputWrapper}>
-                <Ionicons name="mail-outline" size={20} color={Colors.textMuted} style={styles.inputIcon} />
-                <TextInput
-                  style={styles.input}
-                  placeholder="admin@hostel.local"
-                  value={email}
-                  onChangeText={setEmail}
-                  autoCapitalize="none"
-                  keyboardType="email-address"
-                  placeholderTextColor={Colors.textMuted}
-                />
-              </View>
-            </View>
+            <GlassInput
+              label="Email"
+              leftIconName="mail-outline"
+              inputType="email"
+              placeholder="admin@hostel.local"
+              value={email}
+              onChangeText={(text) => {
+                setEmail(text);
+                if (fieldErrors.email) {
+                  setFieldErrors((prev) => ({ ...prev, email: undefined }));
+                }
+              }}
+              error={fieldErrors.email}
+              containerStyle={styles.inputContainer}
+            />
 
-            <View style={styles.inputContainer}>
-              <Text style={styles.label}>Password</Text>
-              <View style={styles.inputWrapper}>
-                <Ionicons name="lock-closed-outline" size={20} color={Colors.textMuted} style={styles.inputIcon} />
-                <TextInput
-                  style={styles.input}
-                  placeholder="Enter your password"
-                  value={password}
-                  onChangeText={setPassword}
-                  secureTextEntry={!showPassword}
-                  placeholderTextColor={Colors.textMuted}
-                />
-                <TouchableOpacity
-                  onPress={() => setShowPassword(!showPassword)}
-                  style={styles.eyeIcon}
-                >
-                  <Ionicons
-                    name={showPassword ? 'eye-off-outline' : 'eye-outline'}
-                    size={20}
-                    color={Colors.textMuted}
-                  />
-                </TouchableOpacity>
-              </View>
-            </View>
+            <GlassInput
+              label="Password"
+              leftIconName="lock-closed-outline"
+              inputType="password"
+              placeholder="Enter your password"
+              value={password}
+              onChangeText={(text) => {
+                setPassword(text);
+                if (fieldErrors.password) {
+                  setFieldErrors((prev) => ({ ...prev, password: undefined }));
+                }
+              }}
+              error={fieldErrors.password}
+              containerStyle={styles.inputContainer}
+            />
 
             {errorMessage ? (
               <View style={styles.inlineError}>
@@ -188,30 +196,7 @@ const styles = StyleSheet.create({
     gap: 24,
   },
   inputContainer: {
-    gap: 8,
-  },
-  label: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: Colors.textPrimary,
-  },
-  inputWrapper: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    ...MinimalInput,
-    paddingHorizontal: 16,
-  },
-  inputIcon: {
-    marginRight: 8,
-  },
-  input: {
-    flex: 1,
-    height: 50,
-    fontSize: 16,
-    color: Colors.textPrimary,
-  },
-  eyeIcon: {
-    padding: 8,
+    gap: 0,
   },
   inlineError: {
     flexDirection: 'row',

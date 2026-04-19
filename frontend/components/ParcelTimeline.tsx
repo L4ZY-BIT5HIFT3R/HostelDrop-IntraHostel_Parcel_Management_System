@@ -84,7 +84,7 @@ export default function ParcelTimeline({
     if (!map.DELIVERED && deliveredAt) map.DELIVERED = deliveredAt;
 
     return map;
-  }, [history, currentStatus, createdAt, assignedAt, otpSentAt, deliveredAt]);
+  }, [history, currentStatus, createdAt, assignedAt, deliveredAt]);
 
   const completedIndexes = TIMELINE_STEPS
     .map((step, index) => (stepTimeMap[step.key] ? index : -1))

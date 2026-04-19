@@ -5,7 +5,6 @@ import {
   StyleSheet,
   ScrollView,
   TouchableOpacity,
-  TextInput,
   ActivityIndicator,
   Alert,
   KeyboardAvoidingView,
@@ -17,9 +16,11 @@ import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import api from '../../utils/api';
 import { useAuthStore } from '../../store/authStore';
-import { Colors, MinimalCard, MinimalInput } from '../../utils/theme';
+import GlassInput from '../../components/GlassInput';
+import AppHeader from '../../components/AppHeader';
+import { Colors, MinimalCard } from '../../utils/theme';
 import ErrorPopup from '../../components/ErrorPopup';
-import { extractErrorMessage } from '../../utils/errorMessage';
+import { extractErrorCode, extractErrorMessage } from '../../utils/errorMessage';
 import { formatDateInIST } from '../../utils/dateTime';
 
 interface StudentProfile {
@@ -45,9 +46,11 @@ export default function Profile() {
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [changePwLoading, setChangePwLoading] = useState(false);
-  const [showCurrentPassword, setShowCurrentPassword] = useState(false);
-  const [showNewPassword, setShowNewPassword] = useState(false);
-  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [changePasswordErrors, setChangePasswordErrors] = useState<{
+    currentPassword?: string;
+    newPassword?: string;
+    confirmPassword?: string;
+  }>({});
 
   // Forgot password (from profile) state
   const [showForgotModal, setShowForgotModal] = useState(false);
@@ -56,16 +59,24 @@ export default function Profile() {
   const [fpOtpSent, setFpOtpSent] = useState(false);
   const [fpLoading, setFpLoading] = useState(false);
   const [fpMaskedEmail, setFpMaskedEmail] = useState('');
-  const [showFpNewPassword, setShowFpNewPassword] = useState(false);
+  const [forgotPasswordErrors, setForgotPasswordErrors] = useState<{
+    otp?: string;
+    newPassword?: string;
+  }>({});
 
   // Room change request state
   const [showRoomChangeModal, setShowRoomChangeModal] = useState(false);
   const [requestedNewRoom, setRequestedNewRoom] = useState('');
   const [roomChangeReason, setRoomChangeReason] = useState('');
   const [roomChangeLoading, setRoomChangeLoading] = useState(false);
+  const [roomChangeErrors, setRoomChangeErrors] = useState<{
+    requestedNewRoom?: string;
+    roomChangeReason?: string;
+  }>({});
 
   const [errorVisible, setErrorVisible] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
+  const [errorCode, setErrorCode] = useState<string | null>(null);
 
   useEffect(() => {
     fetchProfile();
@@ -83,18 +94,31 @@ export default function Profile() {
   };
 
   const handleChangePassword = async () => {
+    const nextErrors: {
+      currentPassword?: string;
+      newPassword?: string;
+      confirmPassword?: string;
+    } = {};
+
     if (!currentPassword.trim()) {
-      setErrorMessage('Please enter your current password');
-      setErrorVisible(true);
-      return;
+      nextErrors.currentPassword = 'Current password is required';
     }
     if (!newPassword.trim() || newPassword.length < 8) {
-      setErrorMessage('New password must be at least 8 characters');
-      setErrorVisible(true);
-      return;
+      nextErrors.newPassword = 'New password must be at least 8 characters';
     }
     if (newPassword !== confirmPassword) {
-      setErrorMessage('New passwords do not match');
+      nextErrors.confirmPassword = 'New passwords do not match';
+    }
+
+    setChangePasswordErrors(nextErrors);
+
+    if (Object.keys(nextErrors).length > 0) {
+      setErrorMessage(
+        nextErrors.confirmPassword ||
+        nextErrors.newPassword ||
+        nextErrors.currentPassword ||
+        'Please fix the highlighted fields.'
+      );
       setErrorVisible(true);
       return;
     }
@@ -110,8 +134,10 @@ export default function Profile() {
       setCurrentPassword('');
       setNewPassword('');
       setConfirmPassword('');
+      setChangePasswordErrors({});
     } catch (error: any) {
       setErrorMessage(extractErrorMessage(error, 'Failed to change password.'));
+      setErrorCode(extractErrorCode(error));
       setErrorVisible(true);
     } finally {
       setChangePwLoading(false);
@@ -125,6 +151,7 @@ export default function Profile() {
     setFpNewPassword('');
     setFpOtpSent(false);
     setFpMaskedEmail('');
+    setForgotPasswordErrors({});
     setShowForgotModal(true);
 
     // Immediately send OTP since we know the roll number
@@ -143,6 +170,7 @@ export default function Profile() {
       }
     } catch (error: any) {
       setErrorMessage(extractErrorMessage(error, 'Failed to send OTP.'));
+      setErrorCode(extractErrorCode(error));
       setErrorVisible(true);
       setShowForgotModal(false);
     } finally {
@@ -152,13 +180,20 @@ export default function Profile() {
 
   const handleForgotResetPassword = async () => {
     if (!profile) return;
+
+    const nextErrors: { otp?: string; newPassword?: string } = {};
+
     if (!fpOtp.trim()) {
-      setErrorMessage('Please enter the OTP');
-      setErrorVisible(true);
-      return;
+      nextErrors.otp = 'OTP is required';
     }
     if (!fpNewPassword.trim() || fpNewPassword.length < 8) {
-      setErrorMessage('New password must be at least 8 characters');
+      nextErrors.newPassword = 'New password must be at least 8 characters';
+    }
+
+    setForgotPasswordErrors(nextErrors);
+
+    if (Object.keys(nextErrors).length > 0) {
+      setErrorMessage(nextErrors.newPassword || nextErrors.otp || 'Please fix the highlighted fields.');
       setErrorVisible(true);
       return;
     }
@@ -173,8 +208,10 @@ export default function Profile() {
       Alert.alert('Password Reset', 'Your password has been reset successfully!');
       setShowForgotModal(false);
       setShowChangePassword(false);
+      setForgotPasswordErrors({});
     } catch (error: any) {
       setErrorMessage(extractErrorMessage(error, 'Failed to reset password.'));
+      setErrorCode(extractErrorCode(error));
       setErrorVisible(true);
     } finally {
       setFpLoading(false);
@@ -197,6 +234,7 @@ export default function Profile() {
       }
     } catch (error: any) {
       setErrorMessage(extractErrorMessage(error, 'Failed to resend OTP.'));
+      setErrorCode(extractErrorCode(error));
       setErrorVisible(true);
     } finally {
       setFpLoading(false);
@@ -204,18 +242,24 @@ export default function Profile() {
   };
 
   const handleSubmitRoomChangeRequest = async () => {
+    const nextErrors: { requestedNewRoom?: string; roomChangeReason?: string } = {};
+
     if (!profile?.room_number?.trim()) {
       setErrorMessage('Current room is not assigned. Please contact admin.');
       setErrorVisible(true);
       return;
     }
     if (!requestedNewRoom.trim()) {
-      setErrorMessage('Please enter new room number');
-      setErrorVisible(true);
-      return;
+      nextErrors.requestedNewRoom = 'New room number is required';
     }
     if (!roomChangeReason.trim()) {
-      setErrorMessage('Please enter reason to change room');
+      nextErrors.roomChangeReason = 'Reason is required';
+    }
+
+    setRoomChangeErrors(nextErrors);
+
+    if (Object.keys(nextErrors).length > 0) {
+      setErrorMessage(nextErrors.requestedNewRoom || nextErrors.roomChangeReason || 'Please fix the highlighted fields.');
       setErrorVisible(true);
       return;
     }
@@ -230,8 +274,10 @@ export default function Profile() {
       setShowRoomChangeModal(false);
       setRequestedNewRoom('');
       setRoomChangeReason('');
+      setRoomChangeErrors({});
     } catch (error: any) {
       setErrorMessage(extractErrorMessage(error, 'Failed to submit room change request.'));
+      setErrorCode(extractErrorCode(error));
       setErrorVisible(true);
     } finally {
       setRoomChangeLoading(false);
@@ -281,15 +327,21 @@ export default function Profile() {
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         style={{ flex: 1 }}
       >
-        <View style={styles.header}>
-          <View>
-            <Text style={styles.headerTitle}>My Profile</Text>
-            <Text style={styles.headerSubtitle}>{profile?.hostel_type === 'BOYS' ? 'Boys' : 'Girls'} Hostel</Text>
-          </View>
-          <TouchableOpacity style={styles.logoutButton} onPress={handleLogout}>
-            <Ionicons name="log-out-outline" size={24} color={Colors.accentRed} />
-          </TouchableOpacity>
-        </View>
+        <AppHeader
+          title="My Profile"
+          subtitle={`${profile?.hostel_type === 'BOYS' ? 'Boys' : 'Girls'} Hostel`}
+          containerStyle={styles.header}
+          titleStyle={styles.headerTitle}
+          subtitleStyle={styles.headerSubtitle}
+          actions={[
+            {
+              icon: 'log-out-outline',
+              color: Colors.accentRed,
+              onPress: handleLogout,
+              accessibilityLabel: 'Logout',
+            },
+          ]}
+        />
 
         <ScrollView
           style={styles.scrollView}
@@ -348,71 +400,53 @@ export default function Profile() {
               </TouchableOpacity>
             ) : (
               <View style={styles.changePasswordForm}>
-                <View style={styles.inputContainer}>
-                  <Text style={styles.inputLabel}>Current Password</Text>
-                  <View style={styles.inputWrapper}>
-                    <Ionicons name="lock-closed-outline" size={20} color={Colors.textMuted} style={styles.inputIcon} />
-                    <TextInput
-                      style={styles.input}
-                      placeholder="Enter current password"
-                      value={currentPassword}
-                      onChangeText={setCurrentPassword}
-                      secureTextEntry={!showCurrentPassword}
-                      placeholderTextColor={Colors.textMuted}
-                    />
-                    <TouchableOpacity onPress={() => setShowCurrentPassword((prev) => !prev)} style={styles.eyeIcon}>
-                      <Ionicons
-                        name={showCurrentPassword ? 'eye-off-outline' : 'eye-outline'}
-                        size={20}
-                        color={Colors.textMuted}
-                      />
-                    </TouchableOpacity>
-                  </View>
-                </View>
+                <GlassInput
+                  label="Current Password"
+                  leftIconName="lock-closed-outline"
+                  inputType="password"
+                  placeholder="Enter current password"
+                  value={currentPassword}
+                  onChangeText={(text) => {
+                    setCurrentPassword(text);
+                    if (changePasswordErrors.currentPassword) {
+                      setChangePasswordErrors((prev) => ({ ...prev, currentPassword: undefined }));
+                    }
+                  }}
+                  error={changePasswordErrors.currentPassword}
+                  containerStyle={styles.inputContainer}
+                />
 
-                <View style={styles.inputContainer}>
-                  <Text style={styles.inputLabel}>New Password</Text>
-                  <View style={styles.inputWrapper}>
-                    <Ionicons name="key-outline" size={20} color={Colors.textMuted} style={styles.inputIcon} />
-                    <TextInput
-                      style={styles.input}
-                      placeholder="Enter new password"
-                      value={newPassword}
-                      onChangeText={setNewPassword}
-                      secureTextEntry={!showNewPassword}
-                      placeholderTextColor={Colors.textMuted}
-                    />
-                    <TouchableOpacity onPress={() => setShowNewPassword((prev) => !prev)} style={styles.eyeIcon}>
-                      <Ionicons
-                        name={showNewPassword ? 'eye-off-outline' : 'eye-outline'}
-                        size={20}
-                        color={Colors.textMuted}
-                      />
-                    </TouchableOpacity>
-                  </View>
-                </View>
+                <GlassInput
+                  label="New Password"
+                  leftIconName="key-outline"
+                  inputType="password"
+                  placeholder="Enter new password"
+                  value={newPassword}
+                  onChangeText={(text) => {
+                    setNewPassword(text);
+                    if (changePasswordErrors.newPassword) {
+                      setChangePasswordErrors((prev) => ({ ...prev, newPassword: undefined }));
+                    }
+                  }}
+                  error={changePasswordErrors.newPassword}
+                  containerStyle={styles.inputContainer}
+                />
 
-                <View style={styles.inputContainer}>
-                  <Text style={styles.inputLabel}>Confirm New Password</Text>
-                  <View style={styles.inputWrapper}>
-                    <Ionicons name="checkmark-circle-outline" size={20} color={Colors.textMuted} style={styles.inputIcon} />
-                    <TextInput
-                      style={styles.input}
-                      placeholder="Re-enter new password"
-                      value={confirmPassword}
-                      onChangeText={setConfirmPassword}
-                      secureTextEntry={!showConfirmPassword}
-                      placeholderTextColor={Colors.textMuted}
-                    />
-                    <TouchableOpacity onPress={() => setShowConfirmPassword((prev) => !prev)} style={styles.eyeIcon}>
-                      <Ionicons
-                        name={showConfirmPassword ? 'eye-off-outline' : 'eye-outline'}
-                        size={20}
-                        color={Colors.textMuted}
-                      />
-                    </TouchableOpacity>
-                  </View>
-                </View>
+                <GlassInput
+                  label="Confirm New Password"
+                  leftIconName="checkmark-circle-outline"
+                  inputType="password"
+                  placeholder="Re-enter new password"
+                  value={confirmPassword}
+                  onChangeText={(text) => {
+                    setConfirmPassword(text);
+                    if (changePasswordErrors.confirmPassword) {
+                      setChangePasswordErrors((prev) => ({ ...prev, confirmPassword: undefined }));
+                    }
+                  }}
+                  error={changePasswordErrors.confirmPassword}
+                  containerStyle={styles.inputContainer}
+                />
 
                 <TouchableOpacity
                   style={[styles.saveButton, changePwLoading && styles.saveButtonDisabled]}
@@ -440,6 +474,7 @@ export default function Profile() {
                     setCurrentPassword('');
                     setNewPassword('');
                     setConfirmPassword('');
+                    setChangePasswordErrors({});
                   }}
                 >
                   <Text style={styles.cancelLinkText}>Cancel</Text>
@@ -481,43 +516,38 @@ export default function Profile() {
                       <Text style={styles.fpEmailHint}>OTP sent to {fpMaskedEmail}</Text>
                     ) : null}
 
-                    <View style={styles.inputContainer}>
-                      <Text style={styles.inputLabel}>Enter OTP</Text>
-                      <View style={styles.inputWrapper}>
-                        <Ionicons name="key-outline" size={20} color={Colors.textMuted} style={styles.inputIcon} />
-                        <TextInput
-                          style={styles.input}
-                          placeholder="6-digit OTP"
-                          value={fpOtp}
-                          onChangeText={setFpOtp}
-                          keyboardType="number-pad"
-                          maxLength={6}
-                          placeholderTextColor={Colors.textMuted}
-                        />
-                      </View>
-                    </View>
+                    <GlassInput
+                      label="Enter OTP"
+                      leftIconName="key-outline"
+                      inputType="numeric"
+                      placeholder="6-digit OTP"
+                      value={fpOtp}
+                      onChangeText={(text) => {
+                        setFpOtp(text);
+                        if (forgotPasswordErrors.otp) {
+                          setForgotPasswordErrors((prev) => ({ ...prev, otp: undefined }));
+                        }
+                      }}
+                      maxLength={6}
+                      error={forgotPasswordErrors.otp}
+                      containerStyle={styles.inputContainer}
+                    />
 
-                    <View style={styles.inputContainer}>
-                      <Text style={styles.inputLabel}>New Password</Text>
-                      <View style={styles.inputWrapper}>
-                        <Ionicons name="lock-closed-outline" size={20} color={Colors.textMuted} style={styles.inputIcon} />
-                        <TextInput
-                          style={styles.input}
-                          placeholder="Enter new password"
-                          value={fpNewPassword}
-                          onChangeText={setFpNewPassword}
-                          secureTextEntry={!showFpNewPassword}
-                          placeholderTextColor={Colors.textMuted}
-                        />
-                        <TouchableOpacity onPress={() => setShowFpNewPassword((prev) => !prev)} style={styles.eyeIcon}>
-                          <Ionicons
-                            name={showFpNewPassword ? 'eye-off-outline' : 'eye-outline'}
-                            size={20}
-                            color={Colors.textMuted}
-                          />
-                        </TouchableOpacity>
-                      </View>
-                    </View>
+                    <GlassInput
+                      label="New Password"
+                      leftIconName="lock-closed-outline"
+                      inputType="password"
+                      placeholder="Enter new password"
+                      value={fpNewPassword}
+                      onChangeText={(text) => {
+                        setFpNewPassword(text);
+                        if (forgotPasswordErrors.newPassword) {
+                          setForgotPasswordErrors((prev) => ({ ...prev, newPassword: undefined }));
+                        }
+                      }}
+                      error={forgotPasswordErrors.newPassword}
+                      containerStyle={styles.inputContainer}
+                    />
 
                     <TouchableOpacity
                       style={[styles.saveButton, fpLoading && styles.saveButtonDisabled]}
@@ -583,34 +613,39 @@ export default function Profile() {
                   </View>
                 </View>
 
-                <View style={styles.inputContainer}>
-                  <Text style={styles.inputLabel}>New Room Number</Text>
-                  <View style={styles.inputWrapper}>
-                    <Ionicons name="home-outline" size={20} color={Colors.textMuted} style={styles.inputIcon} />
-                    <TextInput
-                      style={styles.input}
-                      placeholder="e.g., 207"
-                      value={requestedNewRoom}
-                      onChangeText={setRequestedNewRoom}
-                      placeholderTextColor={Colors.textMuted}
-                    />
-                  </View>
-                </View>
+                <GlassInput
+                  label="New Room Number"
+                  leftIconName="home-outline"
+                  inputType="numeric"
+                  placeholder="e.g., 207"
+                  value={requestedNewRoom}
+                  onChangeText={(text) => {
+                    setRequestedNewRoom(text);
+                    if (roomChangeErrors.requestedNewRoom) {
+                      setRoomChangeErrors((prev) => ({ ...prev, requestedNewRoom: undefined }));
+                    }
+                  }}
+                  error={roomChangeErrors.requestedNewRoom}
+                  containerStyle={styles.inputContainer}
+                />
 
-                <View style={styles.inputContainer}>
-                  <Text style={styles.inputLabel}>Reason to Change</Text>
-                  <View style={[styles.inputWrapper, styles.reasonTextInputWrapper]}>
-                    <TextInput
-                      style={[styles.input, styles.reasonTextInput]}
-                      placeholder="Write reason for room change request"
-                      value={roomChangeReason}
-                      onChangeText={setRoomChangeReason}
-                      multiline
-                      numberOfLines={4}
-                      placeholderTextColor={Colors.textMuted}
-                    />
-                  </View>
-                </View>
+                <GlassInput
+                  label="Reason to Change"
+                  inputType="text"
+                  placeholder="Write reason for room change request"
+                  value={roomChangeReason}
+                  onChangeText={(text) => {
+                    setRoomChangeReason(text);
+                    if (roomChangeErrors.roomChangeReason) {
+                      setRoomChangeErrors((prev) => ({ ...prev, roomChangeReason: undefined }));
+                    }
+                  }}
+                  multiline
+                  numberOfLines={4}
+                  error={roomChangeErrors.roomChangeReason}
+                  containerStyle={styles.inputContainer}
+                  inputContainerStyle={styles.reasonTextInputWrapper}
+                />
 
                 <TouchableOpacity
                   style={[styles.saveButton, roomChangeLoading && styles.saveButtonDisabled]}
@@ -632,7 +667,12 @@ export default function Profile() {
       <ErrorPopup
         visible={errorVisible}
         message={errorMessage}
-        onClose={() => setErrorVisible(false)}
+        code={errorCode}
+        dismissLabel="Dismiss"
+        onClose={() => {
+          setErrorVisible(false);
+          setErrorCode(null);
+        }}
       />
     </SafeAreaView>
   );
@@ -776,7 +816,7 @@ const styles = StyleSheet.create({
     gap: 16,
   },
   inputContainer: {
-    gap: 6,
+    gap: 0,
   },
   inputLabel: {
     fontSize: 13,
@@ -786,20 +826,14 @@ const styles = StyleSheet.create({
   inputWrapper: {
     flexDirection: 'row',
     alignItems: 'center',
-    ...MinimalInput,
+    borderWidth: 1,
+    borderColor: Colors.surfaceBorder,
+    borderRadius: 12,
+    backgroundColor: Colors.bg,
     paddingHorizontal: 14,
   },
   inputIcon: {
     marginRight: 10,
-  },
-  eyeIcon: {
-    padding: 8,
-  },
-  input: {
-    flex: 1,
-    height: 48,
-    fontSize: 15,
-    color: Colors.textPrimary,
   },
   readonlyInput: {
     backgroundColor: Colors.surface,
@@ -813,11 +847,7 @@ const styles = StyleSheet.create({
   reasonTextInputWrapper: {
     alignItems: 'flex-start',
     minHeight: 104,
-    paddingTop: 10,
-  },
-  reasonTextInput: {
-    minHeight: 84,
-    textAlignVertical: 'top',
+    paddingTop: 0,
   },
   saveButton: {
     backgroundColor: Colors.accent,

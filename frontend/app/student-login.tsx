@@ -3,7 +3,6 @@ import {
   View,
   Text,
   StyleSheet,
-  TextInput,
   TouchableOpacity,
   KeyboardAvoidingView,
   Platform,
@@ -19,8 +18,9 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import api from '../utils/api';
 import { useAuthStore } from '../store/authStore';
 import ErrorPopup from '../components/ErrorPopup';
-import { Colors, MinimalInput } from '../utils/theme';
-import { extractErrorMessage } from '../utils/errorMessage';
+import GlassInput from '../components/GlassInput';
+import { Colors } from '../utils/theme';
+import { extractErrorCode, extractErrorMessage } from '../utils/errorMessage';
 
 export default function StudentLogin() {
   const router = useRouter();
@@ -38,7 +38,16 @@ export default function StudentLogin() {
   const [otpSent, setOtpSent] = useState(false);
   const [errorVisible, setErrorVisible] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
-  const [showPassword, setShowPassword] = useState(false);
+  const [errorCode, setErrorCode] = useState<string | null>(null);
+  const [fieldErrors, setFieldErrors] = useState<{
+    name?: string;
+    roomNumber?: string;
+    contactNumber?: string;
+    rollNumber?: string;
+    email?: string;
+    password?: string;
+    otp?: string;
+  }>({});
   const isRegisterMode = authMode === 'REGISTER';
 
   // Forgot Password state
@@ -49,7 +58,11 @@ export default function StudentLogin() {
   const [fpOtpSent, setFpOtpSent] = useState(false);
   const [fpLoading, setFpLoading] = useState(false);
   const [fpMaskedEmail, setFpMaskedEmail] = useState('');
-  const [showFpNewPassword, setShowFpNewPassword] = useState(false);
+  const [forgotFieldErrors, setForgotFieldErrors] = useState<{
+    rollNumber?: string;
+    otp?: string;
+    newPassword?: string;
+  }>({});
 
   useEffect(() => {
     loadHostelType();
@@ -62,7 +75,16 @@ export default function StudentLogin() {
 
   const handleAction = async () => {
     if (!isRegisterMode) {
-      if (!rollNumber.trim() || !password.trim()) {
+      const nextErrors: { rollNumber?: string; password?: string } = {};
+      if (!rollNumber.trim()) {
+        nextErrors.rollNumber = 'Roll number is required';
+      }
+      if (!password.trim()) {
+        nextErrors.password = 'Password is required';
+      }
+      setFieldErrors((prev) => ({ ...prev, ...nextErrors }));
+
+      if (Object.keys(nextErrors).length > 0) {
         setErrorMessage('Please enter your roll number and password');
         setErrorVisible(true);
         return;
@@ -79,18 +101,46 @@ export default function StudentLogin() {
         router.replace('/student-dashboard');
       } catch (error: any) {
         setErrorMessage(extractErrorMessage(error, 'Invalid credentials. Try again.'));
+        setErrorCode(extractErrorCode(error));
         setErrorVisible(true);
       } finally {
         setLoading(false);
       }
     } else {
-      if (!rollNumber.trim() || !email.trim() || !name.trim() || !roomNumber.trim() || !password.trim()) {
+      const nextErrors: {
+        name?: string;
+        roomNumber?: string;
+        rollNumber?: string;
+        email?: string;
+        password?: string;
+      } = {};
+
+      if (!name.trim()) {
+        nextErrors.name = 'Full name is required';
+      }
+      if (!roomNumber.trim()) {
+        nextErrors.roomNumber = 'Room number is required';
+      }
+      if (!rollNumber.trim()) {
+        nextErrors.rollNumber = 'Roll number is required';
+      }
+      if (!email.trim()) {
+        nextErrors.email = 'College email is required';
+      }
+      if (!password.trim()) {
+        nextErrors.password = 'Password is required';
+      }
+
+      setFieldErrors((prev) => ({ ...prev, ...nextErrors }));
+
+      if (Object.keys(nextErrors).length > 0) {
         setErrorMessage('Please fill in all required fields to register');
         setErrorVisible(true);
         return;
       }
 
       if (!email.endsWith('@iiitg.ac.in')) {
+        setFieldErrors((prev) => ({ ...prev, email: 'Use your IIITG email (e.g., ab.c@iiitg.ac.in)' }));
         setErrorMessage('Please use your IIITG email (e.g., ab.c@iiitg.ac.in)');
         setErrorVisible(true);
         return;
@@ -108,6 +158,7 @@ export default function StudentLogin() {
         Alert.alert('Registration OTP Sent', `OTP has been sent to ${email}`);
       } catch (error: any) {
         setErrorMessage(extractErrorMessage(error, 'Failed to send Registration OTP. Try again.'));
+        setErrorCode(extractErrorCode(error));
         setErrorVisible(true);
       } finally {
         setLoading(false);
@@ -117,6 +168,7 @@ export default function StudentLogin() {
 
   const handleVerifyOTP = async () => {
     if (!otp.trim()) {
+      setFieldErrors((prev) => ({ ...prev, otp: 'OTP is required' }));
       setErrorMessage('Please enter OTP');
       setErrorVisible(true);
       return;
@@ -139,6 +191,7 @@ export default function StudentLogin() {
       router.replace('/student-dashboard');
     } catch (error: any) {
       setErrorMessage(extractErrorMessage(error, 'Invalid OTP. Try again.'));
+      setErrorCode(extractErrorCode(error));
       setErrorVisible(true);
     } finally {
       setLoading(false);
@@ -152,11 +205,13 @@ export default function StudentLogin() {
     setFpNewPassword('');
     setFpOtpSent(false);
     setFpMaskedEmail('');
+    setForgotFieldErrors({});
     setForgotModalVisible(true);
   };
 
   const handleForgotSendOtp = async () => {
     if (!fpRollNumber.trim()) {
+      setForgotFieldErrors((prev) => ({ ...prev, rollNumber: 'Roll number is required' }));
       setErrorMessage('Please enter your roll number');
       setErrorVisible(true);
       return;
@@ -176,6 +231,7 @@ export default function StudentLogin() {
       }
     } catch (error: any) {
       setErrorMessage(extractErrorMessage(error, 'Failed to send OTP. Try again.'));
+      setErrorCode(extractErrorCode(error));
       setErrorVisible(true);
     } finally {
       setFpLoading(false);
@@ -184,11 +240,13 @@ export default function StudentLogin() {
 
   const handleForgotResetPassword = async () => {
     if (!fpOtp.trim()) {
+      setForgotFieldErrors((prev) => ({ ...prev, otp: 'OTP is required' }));
       setErrorMessage('Please enter the OTP');
       setErrorVisible(true);
       return;
     }
     if (!fpNewPassword.trim() || fpNewPassword.length < 8) {
+      setForgotFieldErrors((prev) => ({ ...prev, newPassword: 'Must be at least 8 characters' }));
       setErrorMessage('New password must be at least 8 characters');
       setErrorVisible(true);
       return;
@@ -206,6 +264,7 @@ export default function StudentLogin() {
       setPassword('');
     } catch (error: any) {
       setErrorMessage(extractErrorMessage(error, 'Failed to reset password. Try again.'));
+      setErrorCode(extractErrorCode(error));
       setErrorVisible(true);
     } finally {
       setFpLoading(false);
@@ -274,111 +333,107 @@ export default function StudentLogin() {
 
             {isRegisterMode && (
               <>
-                <View style={styles.inputContainer}>
-                  <Text style={styles.label}>Full Name</Text>
-                  <View style={styles.inputWrapper}>
-                    <Ionicons name="person-outline" size={20} color={Colors.textMuted} style={styles.inputIcon} />
-                    <TextInput
-                      style={styles.input}
-                      placeholder="Enter your full name"
-                      value={name}
-                      onChangeText={setName}
-                      editable={!otpSent}
-                      placeholderTextColor={Colors.textMuted}
-                    />
-                  </View>
-                </View>
+                <GlassInput
+                  label="Full Name"
+                  leftIconName="person-outline"
+                  inputType="text"
+                  placeholder="Enter your full name"
+                  value={name}
+                  onChangeText={(text) => {
+                    setName(text);
+                    if (fieldErrors.name) {
+                      setFieldErrors((prev) => ({ ...prev, name: undefined }));
+                    }
+                  }}
+                  editable={!otpSent}
+                  error={fieldErrors.name}
+                  containerStyle={styles.inputContainer}
+                />
 
-                <View style={styles.inputContainer}>
-                  <Text style={styles.label}>Room Number</Text>
-                  <View style={styles.inputWrapper}>
-                    <Ionicons name="home-outline" size={20} color={Colors.textMuted} style={styles.inputIcon} />
-                    <TextInput
-                      style={styles.input}
-                      placeholder="e.g. 101"
-                      value={roomNumber}
-                      onChangeText={setRoomNumber}
-                      editable={!otpSent}
-                      placeholderTextColor={Colors.textMuted}
-                    />
-                  </View>
-                </View>
+                <GlassInput
+                  label="Room Number"
+                  leftIconName="home-outline"
+                  inputType="numeric"
+                  placeholder="e.g. 101"
+                  value={roomNumber}
+                  onChangeText={(text) => {
+                    setRoomNumber(text);
+                    if (fieldErrors.roomNumber) {
+                      setFieldErrors((prev) => ({ ...prev, roomNumber: undefined }));
+                    }
+                  }}
+                  editable={!otpSent}
+                  error={fieldErrors.roomNumber}
+                  containerStyle={styles.inputContainer}
+                />
 
-                <View style={styles.inputContainer}>
-                  <Text style={styles.label}>Contact Number (Optional)</Text>
-                  <View style={styles.inputWrapper}>
-                    <Ionicons name="call-outline" size={20} color={Colors.textMuted} style={styles.inputIcon} />
-                    <TextInput
-                      style={styles.input}
-                      placeholder="Enter mobile number"
-                      value={contactNumber}
-                      onChangeText={setContactNumber}
-                      keyboardType="phone-pad"
-                      editable={!otpSent}
-                      placeholderTextColor={Colors.textMuted}
-                    />
-                  </View>
-                </View>
+                <GlassInput
+                  label="Contact Number (Optional)"
+                  leftIconName="call-outline"
+                  inputType="phone"
+                  placeholder="Enter mobile number"
+                  value={contactNumber}
+                  onChangeText={setContactNumber}
+                  editable={!otpSent}
+                  error={fieldErrors.contactNumber}
+                  containerStyle={styles.inputContainer}
+                />
               </>
             )}
 
-            <View style={styles.inputContainer}>
-              <Text style={styles.label}>Roll Number</Text>
-              <View style={styles.inputWrapper}>
-                <Ionicons name="card-outline" size={20} color={Colors.textMuted} style={styles.inputIcon} />
-                <TextInput
-                  style={styles.input}
-                  placeholder="Enter your roll number"
-                  value={rollNumber}
-                  onChangeText={setRollNumber}
-                  autoCapitalize="characters"
-                  editable={!otpSent}
-                  placeholderTextColor={Colors.textMuted}
-                />
-              </View>
-            </View>
+            <GlassInput
+              label="Roll Number"
+              leftIconName="card-outline"
+              inputType="text"
+              placeholder="Enter your roll number"
+              value={rollNumber}
+              onChangeText={(text) => {
+                setRollNumber(text);
+                if (fieldErrors.rollNumber) {
+                  setFieldErrors((prev) => ({ ...prev, rollNumber: undefined }));
+                }
+              }}
+              autoCapitalize="characters"
+              editable={!otpSent}
+              error={fieldErrors.rollNumber}
+              containerStyle={styles.inputContainer}
+            />
 
             {isRegisterMode && (
-              <View style={styles.inputContainer}>
-                <Text style={styles.label}>College Email</Text>
-                <View style={styles.inputWrapper}>
-                  <Ionicons name="mail-outline" size={20} color={Colors.textMuted} style={styles.inputIcon} />
-                  <TextInput
-                    style={styles.input}
-                    placeholder="ab.c@iiitg.ac.in"
-                    value={email}
-                    onChangeText={setEmail}
-                    autoCapitalize="none"
-                    keyboardType="email-address"
-                    editable={!otpSent}
-                    placeholderTextColor={Colors.textMuted}
-                  />
-                </View>
-              </View>
+              <GlassInput
+                label="College Email"
+                leftIconName="mail-outline"
+                inputType="email"
+                placeholder="ab.c@iiitg.ac.in"
+                value={email}
+                onChangeText={(text) => {
+                  setEmail(text);
+                  if (fieldErrors.email) {
+                    setFieldErrors((prev) => ({ ...prev, email: undefined }));
+                  }
+                }}
+                editable={!otpSent}
+                error={fieldErrors.email}
+                containerStyle={styles.inputContainer}
+              />
             )}
 
-            <View style={styles.inputContainer}>
-              <Text style={styles.label}>Password</Text>
-              <View style={styles.inputWrapper}>
-                <Ionicons name="lock-closed-outline" size={20} color={Colors.textMuted} style={styles.inputIcon} />
-                <TextInput
-                  style={styles.input}
-                  placeholder={isRegisterMode ? "Create a password" : "Enter your password"}
-                  value={password}
-                  onChangeText={setPassword}
-                  secureTextEntry={!showPassword}
-                  editable={!otpSent}
-                  placeholderTextColor={Colors.textMuted}
-                />
-                <TouchableOpacity onPress={() => setShowPassword((prev) => !prev)} style={styles.eyeIcon}>
-                  <Ionicons
-                    name={showPassword ? 'eye-off-outline' : 'eye-outline'}
-                    size={20}
-                    color={Colors.textMuted}
-                  />
-                </TouchableOpacity>
-              </View>
-            </View>
+            <GlassInput
+              label="Password"
+              leftIconName="lock-closed-outline"
+              inputType="password"
+              placeholder={isRegisterMode ? 'Create a password' : 'Enter your password'}
+              value={password}
+              onChangeText={(text) => {
+                setPassword(text);
+                if (fieldErrors.password) {
+                  setFieldErrors((prev) => ({ ...prev, password: undefined }));
+                }
+              }}
+              editable={!otpSent}
+              error={fieldErrors.password}
+              containerStyle={styles.inputContainer}
+            />
 
             {/* Forgot Password link - only on login mode */}
             {!isRegisterMode && !otpSent && (
@@ -388,21 +443,22 @@ export default function StudentLogin() {
             )}
 
             {otpSent && isRegisterMode && (
-              <View style={styles.inputContainer}>
-                <Text style={styles.label}>Enter OTP</Text>
-                <View style={styles.inputWrapper}>
-                  <Ionicons name="key-outline" size={20} color={Colors.textMuted} style={styles.inputIcon} />
-                  <TextInput
-                    style={styles.input}
-                    placeholder="6-digit OTP"
-                    value={otp}
-                    onChangeText={setOtp}
-                    keyboardType="number-pad"
-                    maxLength={6}
-                    placeholderTextColor={Colors.textMuted}
-                  />
-                </View>
-              </View>
+              <GlassInput
+                label="Enter OTP"
+                leftIconName="key-outline"
+                inputType="numeric"
+                placeholder="6-digit OTP"
+                value={otp}
+                onChangeText={(text) => {
+                  setOtp(text);
+                  if (fieldErrors.otp) {
+                    setFieldErrors((prev) => ({ ...prev, otp: undefined }));
+                  }
+                }}
+                maxLength={6}
+                error={fieldErrors.otp}
+                containerStyle={styles.inputContainer}
+              />
             )}
 
             {!otpSent ? (
@@ -481,19 +537,22 @@ export default function StudentLogin() {
                 </Text>
 
                 <View style={styles.inputContainer}>
-                  <Text style={styles.label}>Roll Number</Text>
-                  <View style={styles.inputWrapper}>
-                    <Ionicons name="card-outline" size={20} color={Colors.textMuted} style={styles.inputIcon} />
-                    <TextInput
-                      style={styles.input}
-                      placeholder="Enter your roll number"
-                      value={fpRollNumber}
-                      onChangeText={setFpRollNumber}
-                      autoCapitalize="characters"
-                      editable={!fpOtpSent}
-                      placeholderTextColor={Colors.textMuted}
-                    />
-                  </View>
+                  <GlassInput
+                    label="Roll Number"
+                    leftIconName="card-outline"
+                    inputType="text"
+                    placeholder="Enter your roll number"
+                    value={fpRollNumber}
+                    onChangeText={(text) => {
+                      setFpRollNumber(text);
+                      if (forgotFieldErrors.rollNumber) {
+                        setForgotFieldErrors((prev) => ({ ...prev, rollNumber: undefined }));
+                      }
+                    }}
+                    autoCapitalize="characters"
+                    editable={!fpOtpSent}
+                    error={forgotFieldErrors.rollNumber}
+                  />
                 </View>
 
                 {fpOtpSent && (
@@ -503,41 +562,38 @@ export default function StudentLogin() {
                     ) : null}
 
                     <View style={styles.inputContainer}>
-                      <Text style={styles.label}>Enter OTP</Text>
-                      <View style={styles.inputWrapper}>
-                        <Ionicons name="key-outline" size={20} color={Colors.textMuted} style={styles.inputIcon} />
-                        <TextInput
-                          style={styles.input}
-                          placeholder="6-digit OTP"
-                          value={fpOtp}
-                          onChangeText={setFpOtp}
-                          keyboardType="number-pad"
-                          maxLength={6}
-                          placeholderTextColor={Colors.textMuted}
-                        />
-                      </View>
+                      <GlassInput
+                        label="Enter OTP"
+                        leftIconName="key-outline"
+                        inputType="numeric"
+                        placeholder="6-digit OTP"
+                        value={fpOtp}
+                        onChangeText={(text) => {
+                          setFpOtp(text);
+                          if (forgotFieldErrors.otp) {
+                            setForgotFieldErrors((prev) => ({ ...prev, otp: undefined }));
+                          }
+                        }}
+                        maxLength={6}
+                        error={forgotFieldErrors.otp}
+                      />
                     </View>
 
                     <View style={styles.inputContainer}>
-                      <Text style={styles.label}>New Password</Text>
-                      <View style={styles.inputWrapper}>
-                        <Ionicons name="lock-closed-outline" size={20} color={Colors.textMuted} style={styles.inputIcon} />
-                        <TextInput
-                          style={styles.input}
-                          placeholder="Enter new password"
-                          value={fpNewPassword}
-                          onChangeText={setFpNewPassword}
-                          secureTextEntry={!showFpNewPassword}
-                          placeholderTextColor={Colors.textMuted}
-                        />
-                        <TouchableOpacity onPress={() => setShowFpNewPassword((prev) => !prev)} style={styles.eyeIcon}>
-                          <Ionicons
-                            name={showFpNewPassword ? 'eye-off-outline' : 'eye-outline'}
-                            size={20}
-                            color={Colors.textMuted}
-                          />
-                        </TouchableOpacity>
-                      </View>
+                      <GlassInput
+                        label="New Password"
+                        leftIconName="lock-closed-outline"
+                        inputType="password"
+                        placeholder="Enter new password"
+                        value={fpNewPassword}
+                        onChangeText={(text) => {
+                          setFpNewPassword(text);
+                          if (forgotFieldErrors.newPassword) {
+                            setForgotFieldErrors((prev) => ({ ...prev, newPassword: undefined }));
+                          }
+                        }}
+                        error={forgotFieldErrors.newPassword}
+                      />
                     </View>
                   </>
                 )}
@@ -590,7 +646,12 @@ export default function StudentLogin() {
       <ErrorPopup
         visible={errorVisible}
         message={errorMessage}
-        onClose={() => setErrorVisible(false)}
+        code={errorCode}
+        dismissLabel="Dismiss"
+        onClose={() => {
+          setErrorVisible(false);
+          setErrorCode(null);
+        }}
       />
     </SafeAreaView>
   );
@@ -678,30 +739,7 @@ const styles = StyleSheet.create({
     color: Colors.textPrimary,
   },
   inputContainer: {
-    gap: 8,
-  },
-  label: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: Colors.textPrimary,
-  },
-  inputWrapper: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    ...MinimalInput,
-    paddingHorizontal: 16,
-  },
-  inputIcon: {
-    marginRight: 12,
-  },
-  eyeIcon: {
-    padding: 8,
-  },
-  input: {
-    flex: 1,
-    height: 52,
-    fontSize: 16,
-    color: Colors.textPrimary,
+    gap: 0,
   },
   button: {
     backgroundColor: Colors.accent,
