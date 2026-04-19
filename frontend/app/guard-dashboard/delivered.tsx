@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   View,
   Text,
@@ -7,7 +7,6 @@ import {
   TouchableOpacity,
   Modal,
   ActivityIndicator,
-  TextInput,
   Platform,
   Animated,
 } from 'react-native';
@@ -16,9 +15,11 @@ import { Ionicons } from '@expo/vector-icons';
 import { useIsFocused } from '@react-navigation/native';
 import api from '../../utils/api';
 import { Colors, GlassCard, GlassInput } from '../../utils/theme';
+import SearchBar from '../../components/SearchBar';
 import AnimatedCard, { STACK_CARD_SPACING, STACK_FOCUS_OFFSET } from '../../components/AnimatedCard';
 import ParcelTimeline from '../../components/ParcelTimeline';
 import { extractErrorMessage } from '../../utils/errorMessage';
+import { useAnimatedList } from '../../utils/useAnimatedList';
 
 interface Parcel {
   _id: string;
@@ -68,11 +69,23 @@ export default function DeliveredParcels() {
   const [studentModalTitle, setStudentModalTitle] = useState('Student Details');
   const [loadingStudent, setLoadingStudent] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
-  const [listHeight, setListHeight] = useState(0);
-  const [activeIndex, setActiveIndex] = useState(0);
-  const activeIndexRef = useRef(0);
-  const scrollY = useRef(new Animated.Value(0)).current;
   const isFocused = useIsFocused();
+
+  const {
+    activeIndex,
+    scrollY,
+    cardStep,
+    contentContainerStyle,
+    onLayout,
+    onScroll,
+    onScrollEndDrag,
+    onMomentumScrollEnd,
+  } = useAnimatedList({
+    itemCount: filteredParcels.length,
+    cardHeight: DELIVERED_STACK_CARD_HEIGHT,
+    cardSpacing: STACK_CARD_SPACING,
+    focusOffset: STACK_FOCUS_OFFSET,
+  });
 
   useEffect(() => {
     fetchParcels();
@@ -100,25 +113,6 @@ export default function DeliveredParcels() {
   const handleRefresh = () => {
     setRefreshing(true);
     fetchParcels();
-  };
-
-  const getStackPadding = (height: number) => ({
-    top: Math.max(4, (height - DELIVERED_STACK_CARD_HEIGHT) / 2 - STACK_FOCUS_OFFSET - 12),
-    bottom: Math.max(120, (height - DELIVERED_STACK_CARD_HEIGHT) / 2 + STACK_FOCUS_OFFSET + 96),
-  });
-
-  const updateActiveIndex = (offsetY: number, viewportHeight?: number) => {
-    const height = viewportHeight ?? listHeight;
-    if (height <= 0 || filteredParcels.length === 0) return;
-    const step = DELIVERED_STACK_CARD_HEIGHT + STACK_CARD_SPACING;
-    const { top } = getStackPadding(height);
-    const centerY = offsetY + height / 2;
-    const rawIndex = (centerY - top - DELIVERED_STACK_CARD_HEIGHT / 2) / step;
-    const nextIndex = Math.max(0, Math.min(filteredParcels.length - 1, Math.round(rawIndex)));
-    if (nextIndex !== activeIndexRef.current) {
-      activeIndexRef.current = nextIndex;
-      setActiveIndex(nextIndex);
-    }
   };
 
   const handleSearch = (query: string) => {
@@ -178,7 +172,7 @@ export default function DeliveredParcels() {
   };
 
   const renderParcelItem = ({ item, index }: { item: Parcel; index: number }) => (
-    <AnimatedCard index={index} activeIndex={activeIndex} scrollY={scrollY}>
+    <AnimatedCard index={index} activeIndex={activeIndex} scrollY={scrollY} status={item.status}>
       <View style={styles.parcelCard}>
         <View style={styles.parcelHeader}>
           <View style={styles.parcelInfo}>
@@ -253,21 +247,12 @@ export default function DeliveredParcels() {
           </TouchableOpacity>
         ) : null}
 
-        <View style={styles.searchContainer}>
-          <Ionicons name="search" size={20} color={Colors.textMuted} style={styles.searchIcon} />
-          <TextInput
-            style={styles.searchInput}
-            placeholder="Search by room, roll number, or name..."
-            value={searchQuery}
-            onChangeText={handleSearch}
-            placeholderTextColor={Colors.textMuted}
-          />
-          {searchQuery.length > 0 && (
-            <TouchableOpacity onPress={() => handleSearch('')}>
-              <Ionicons name="close-circle" size={20} color={Colors.textMuted} />
-            </TouchableOpacity>
-          )}
-        </View>
+        <SearchBar
+          value={searchQuery}
+          onChangeText={handleSearch}
+          placeholder="Search by room, roll number, or name..."
+          containerStyle={styles.searchContainer}
+        />
 
         <View style={styles.contentHeader}>
           <Text style={styles.sectionTitle}>Delivered Parcels</Text>
@@ -280,35 +265,17 @@ export default function DeliveredParcels() {
           keyExtractor={(item) => item._id}
           contentContainerStyle={[
             styles.listContainer,
-            listHeight > 0
-              ? {
-                  paddingTop: getStackPadding(listHeight).top,
-                  paddingBottom: getStackPadding(listHeight).bottom,
-                }
-              : null,
+            contentContainerStyle ?? null,
           ]}
-          onLayout={(event) => setListHeight(event.nativeEvent.layout.height)}
-          onScroll={Animated.event(
-            [{ nativeEvent: { contentOffset: { y: scrollY } } }],
-            { useNativeDriver: Platform.OS !== 'web' }
-          )}
+          onLayout={onLayout}
+          onScroll={onScroll}
           scrollEventThrottle={16}
-          snapToInterval={DELIVERED_STACK_CARD_HEIGHT + STACK_CARD_SPACING}
+          snapToInterval={cardStep}
           snapToAlignment="center"
           decelerationRate={0.992}
           showsVerticalScrollIndicator={false}
-          onScrollEndDrag={(event) => {
-            updateActiveIndex(
-              event.nativeEvent.contentOffset.y,
-              event.nativeEvent.layoutMeasurement?.height
-            );
-          }}
-          onMomentumScrollEnd={(event) => {
-            updateActiveIndex(
-              event.nativeEvent.contentOffset.y,
-              event.nativeEvent.layoutMeasurement?.height
-            );
-          }}
+          onScrollEndDrag={onScrollEndDrag}
+          onMomentumScrollEnd={onMomentumScrollEnd}
           refreshControl={
             <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={Colors.accent} />
           }
@@ -334,7 +301,7 @@ export default function DeliveredParcels() {
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>{studentModalTitle}</Text>
               <TouchableOpacity onPress={() => setStudentModalVisible(false)}>
-                <Ionicons name="close" size={24} color={Colors.textMuted} />
+                <Ionicons name="close" size={24} color="#D1D5DB" />
               </TouchableOpacity>
             </View>
 
@@ -435,14 +402,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     marginBottom: 8,
     height: 48,
-  },
-  searchIcon: {
-    marginRight: 8,
-  },
-  searchInput: {
-    flex: 1,
-    fontSize: 14,
-    color: Colors.textPrimary,
   },
   contentHeader: {
     flexDirection: 'row',
@@ -596,7 +555,7 @@ const styles = StyleSheet.create({
   modalTitle: {
     fontSize: 20,
     fontWeight: 'bold',
-    color: Colors.textPrimary,
+    color: '#FFFFFF',
   },
   loadingContainer: {
     padding: 40,

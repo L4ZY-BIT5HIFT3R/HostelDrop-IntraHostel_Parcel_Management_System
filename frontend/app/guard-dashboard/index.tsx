@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import QRCode from 'react-native-qrcode-svg';
 import {
   View,
@@ -7,7 +7,6 @@ import {
   TouchableOpacity,
   RefreshControl,
   Modal,
-  TextInput,
   KeyboardAvoidingView,
   Platform,
   Alert,
@@ -20,9 +19,13 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import api, { generateQrCode } from '../../utils/api';
 import { useAuthStore } from '../../store/authStore';
 import { Colors, GlassCard, GlassInput } from '../../utils/theme';
-import AnimatedCard, { STACK_CARD_HEIGHT, STACK_CARD_SPACING, STACK_FOCUS_OFFSET } from '../../components/AnimatedCard';
+import GlassTextInput from '../../components/GlassInput';
+import SearchBar from '../../components/SearchBar';
+import AppHeader from '../../components/AppHeader';
+import AnimatedCard, { STACK_CARD_HEIGHT } from '../../components/AnimatedCard';
 import { extractErrorMessage } from '../../utils/errorMessage';
 import { formatDateInIST } from '../../utils/dateTime';
+import { useAnimatedList } from '../../utils/useAnimatedList';
 
 interface Parcel {
   _id: string;
@@ -54,10 +57,17 @@ export default function GuardDashboardIndex() {
   const [selectedParcel, setSelectedParcel] = useState<Parcel | null>(null);
   const [enteredOTP, setEnteredOTP] = useState('');
   const [errorMessage, setErrorMessage] = useState('');
-  const [listHeight, setListHeight] = useState(0);
-  const [activeIndex, setActiveIndex] = useState(0);
-  const activeIndexRef = useRef(0);
-  const scrollY = useRef(new Animated.Value(0)).current;
+
+  const {
+    activeIndex,
+    scrollY,
+    cardStep,
+    contentContainerStyle,
+    onLayout,
+    onScroll,
+    onScrollEndDrag,
+    onMomentumScrollEnd,
+  } = useAnimatedList({ itemCount: filteredParcels.length });
 
   // Add Parcel Form
   const [roomNumber, setRoomNumber] = useState('');
@@ -99,25 +109,6 @@ export default function GuardDashboardIndex() {
   const handleRefresh = () => {
     setRefreshing(true);
     fetchParcels();
-  };
-
-  const getStackPadding = (height: number) => ({
-    top: Math.max(4, (height - STACK_CARD_HEIGHT) / 2 - STACK_FOCUS_OFFSET - 12),
-    bottom: Math.max(120, (height - STACK_CARD_HEIGHT) / 2 + STACK_FOCUS_OFFSET + 96),
-  });
-
-  const updateActiveIndex = (offsetY: number, viewportHeight?: number) => {
-    const height = viewportHeight ?? listHeight;
-    if (height <= 0 || filteredParcels.length === 0) return;
-    const step = STACK_CARD_HEIGHT + STACK_CARD_SPACING;
-    const { top } = getStackPadding(height);
-    const centerY = offsetY + height / 2;
-    const rawIndex = (centerY - top - STACK_CARD_HEIGHT / 2) / step;
-    const nextIndex = Math.max(0, Math.min(filteredParcels.length - 1, Math.round(rawIndex)));
-    if (nextIndex !== activeIndexRef.current) {
-      activeIndexRef.current = nextIndex;
-      setActiveIndex(nextIndex);
-    }
   };
 
   const handleSearch = (query: string) => {
@@ -302,7 +293,7 @@ export default function GuardDashboardIndex() {
     const isPending = item.status === 'PENDING';
 
     return (
-      <AnimatedCard index={index} activeIndex={activeIndex} scrollY={scrollY}>
+      <AnimatedCard index={index} activeIndex={activeIndex} scrollY={scrollY} status={item.status}>
         <View style={styles.parcelCard}>
           <View style={styles.parcelHeader}>
             <View style={{ flex: 1 }}>
@@ -378,42 +369,34 @@ export default function GuardDashboardIndex() {
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
-      <View style={styles.header}>
-        <TouchableOpacity 
-          style={styles.backButton} 
-          onPress={async () => {
-            await logout();
-            router.replace('/role-selection');
-          }}
-        >
-          <Ionicons name="arrow-back" size={24} color={Colors.textPrimary} />
-        </TouchableOpacity>
-        <View style={styles.headerTextContainer}>
-          <Text style={styles.headerTitle}>Guard Dashboard</Text>
-          <Text style={styles.headerSubtitle}>{user?.hostel_type} Hostel</Text>
-        </View>
-        <TouchableOpacity style={styles.logoutButton} onPress={handleLogout}>
-          <Ionicons name="log-out-outline" size={24} color={Colors.accentRed} />
-        </TouchableOpacity>
-      </View>
+      <AppHeader
+        title="Guard Dashboard"
+        subtitle={`${user?.hostel_type ?? ''} Hostel`}
+        containerStyle={styles.header}
+        titleStyle={styles.headerTitle}
+        subtitleStyle={styles.headerSubtitle}
+        onBackPress={async () => {
+          await logout();
+          router.replace('/role-selection');
+        }}
+        actions={[
+          {
+            icon: 'log-out-outline',
+            color: Colors.accentRed,
+            onPress: handleLogout,
+            accessibilityLabel: 'Logout',
+          },
+        ]}
+      />
 
       <View style={styles.content}>
         {/* Search Bar */}
-        <View style={styles.searchContainer}>
-          <Ionicons name="search" size={20} color={Colors.textMuted} style={styles.searchIcon} />
-          <TextInput
-            style={styles.searchInput}
-            placeholder="Search by room, roll number, or name..."
-            value={searchQuery}
-            onChangeText={handleSearch}
-            placeholderTextColor={Colors.textMuted}
-          />
-          {searchQuery.length > 0 && (
-            <TouchableOpacity onPress={() => handleSearch('')}>
-              <Ionicons name="close-circle" size={20} color={Colors.textMuted} />
-            </TouchableOpacity>
-          )}
-        </View>
+        <SearchBar
+          value={searchQuery}
+          onChangeText={handleSearch}
+          placeholder="Search by room, roll number, or name..."
+          containerStyle={styles.searchContainer}
+        />
 
         <View style={styles.contentHeader}>
           <Text style={styles.sectionTitle}>Pending & Unassigned Parcels</Text>
@@ -426,35 +409,17 @@ export default function GuardDashboardIndex() {
           keyExtractor={(item) => item._id}
           contentContainerStyle={[
             styles.listContainer,
-            listHeight > 0
-              ? {
-                  paddingTop: getStackPadding(listHeight).top,
-                  paddingBottom: getStackPadding(listHeight).bottom,
-                }
-              : null,
+            contentContainerStyle ?? null,
           ]}
-          onLayout={(event) => setListHeight(event.nativeEvent.layout.height)}
-          onScroll={Animated.event(
-            [{ nativeEvent: { contentOffset: { y: scrollY } } }],
-            { useNativeDriver: Platform.OS !== 'web' }
-          )}
+          onLayout={onLayout}
+          onScroll={onScroll}
           scrollEventThrottle={16}
-          snapToInterval={STACK_CARD_HEIGHT + STACK_CARD_SPACING}
+          snapToInterval={cardStep}
           snapToAlignment="center"
           decelerationRate={0.992}
           showsVerticalScrollIndicator={false}
-          onScrollEndDrag={(event) => {
-            updateActiveIndex(
-              event.nativeEvent.contentOffset.y,
-              event.nativeEvent.layoutMeasurement?.height
-            );
-          }}
-          onMomentumScrollEnd={(event) => {
-            updateActiveIndex(
-              event.nativeEvent.contentOffset.y,
-              event.nativeEvent.layoutMeasurement?.height
-            );
-          }}
+          onScrollEndDrag={onScrollEndDrag}
+          onMomentumScrollEnd={onMomentumScrollEnd}
           refreshControl={
             <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={Colors.accent} />
           }
@@ -484,54 +449,59 @@ export default function GuardDashboardIndex() {
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>Add New Parcel</Text>
               <TouchableOpacity onPress={() => setAddModalVisible(false)}>
-                <Ionicons name="close" size={24} color={Colors.textMuted} />
+                <Ionicons name="close" size={24} color="#D1D5DB" />
               </TouchableOpacity>
             </View>
 
             <ScrollView style={styles.modalForm}>
               <View style={styles.inputGroup}>
-                <Text style={styles.inputLabel}>Room Number *</Text>
-                <TextInput
-                  style={styles.textInput}
+                <GlassTextInput
+                  label="Room Number *"
+                  inputType="numeric"
                   placeholder="e.g., 101"
                   value={roomNumber}
                   onChangeText={setRoomNumber}
-                  placeholderTextColor={Colors.textMuted}
+                  containerStyle={styles.inputContainer}
+                  labelStyle={styles.inputLabel}
                 />
               </View>
 
               <View style={styles.inputGroup}>
-                <Text style={styles.inputLabel}>Roll Number (Optional)</Text>
-                <TextInput
-                  style={styles.textInput}
+                <GlassTextInput
+                  label="Roll Number (Optional)"
+                  inputType="text"
                   placeholder="e.g., 2021001"
                   value={rollNumber}
                   onChangeText={setRollNumber}
-                  placeholderTextColor="#9CA3AF"
+                  containerStyle={styles.inputContainer}
+                  labelStyle={styles.inputLabel}
                 />
               </View>
 
               <View style={styles.inputGroup}>
-                <Text style={styles.inputLabel}>Student Name (Optional)</Text>
-                <TextInput
-                  style={styles.textInput}
+                <GlassTextInput
+                  label="Student Name (Optional)"
+                  inputType="text"
                   placeholder="Student name"
                   value={studentName}
                   onChangeText={setStudentName}
-                  placeholderTextColor="#9CA3AF"
+                  containerStyle={styles.inputContainer}
+                  labelStyle={styles.inputLabel}
                 />
               </View>
 
               <View style={styles.inputGroup}>
-                <Text style={styles.inputLabel}>Description (Optional)</Text>
-                <TextInput
-                  style={[styles.textInput, styles.textArea]}
+                <GlassTextInput
+                  label="Description (Optional)"
+                  inputType="text"
                   placeholder="Parcel description"
                   value={description}
                   onChangeText={setDescription}
                   multiline
                   numberOfLines={3}
-                  placeholderTextColor="#9CA3AF"
+                  containerStyle={styles.inputContainer}
+                  inputContainerStyle={styles.textAreaContainer}
+                  labelStyle={styles.inputLabel}
                 />
               </View>
 
@@ -558,54 +528,59 @@ export default function GuardDashboardIndex() {
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>Edit Parcel</Text>
               <TouchableOpacity onPress={() => setEditModalVisible(false)}>
-                <Ionicons name="close" size={24} color={Colors.textMuted} />
+                <Ionicons name="close" size={24} color="#D1D5DB" />
               </TouchableOpacity>
             </View>
 
             <ScrollView style={styles.modalForm}>
               <View style={styles.inputGroup}>
-                <Text style={styles.inputLabel}>Room Number *</Text>
-                <TextInput
-                  style={styles.textInput}
+                <GlassTextInput
+                  label="Room Number *"
+                  inputType="numeric"
                   placeholder="e.g., 101"
                   value={editRoomNumber}
                   onChangeText={setEditRoomNumber}
-                  placeholderTextColor="#9CA3AF"
+                  containerStyle={styles.inputContainer}
+                  labelStyle={styles.inputLabel}
                 />
               </View>
 
               <View style={styles.inputGroup}>
-                <Text style={styles.inputLabel}>Roll Number (Optional)</Text>
-                <TextInput
-                  style={styles.textInput}
+                <GlassTextInput
+                  label="Roll Number (Optional)"
+                  inputType="text"
                   placeholder="Leave empty to unassign"
                   value={editRollNumber}
                   onChangeText={setEditRollNumber}
-                  placeholderTextColor="#9CA3AF"
+                  containerStyle={styles.inputContainer}
+                  labelStyle={styles.inputLabel}
                 />
               </View>
 
               <View style={styles.inputGroup}>
-                <Text style={styles.inputLabel}>Student Name (Optional)</Text>
-                <TextInput
-                  style={styles.textInput}
+                <GlassTextInput
+                  label="Student Name (Optional)"
+                  inputType="text"
                   placeholder="Student name"
                   value={editStudentName}
                   onChangeText={setEditStudentName}
-                  placeholderTextColor="#9CA3AF"
+                  containerStyle={styles.inputContainer}
+                  labelStyle={styles.inputLabel}
                 />
               </View>
 
               <View style={styles.inputGroup}>
-                <Text style={styles.inputLabel}>Description (Optional)</Text>
-                <TextInput
-                  style={[styles.textInput, styles.textArea]}
+                <GlassTextInput
+                  label="Description (Optional)"
+                  inputType="text"
                   placeholder="Parcel description"
                   value={editDescription}
                   onChangeText={setEditDescription}
                   multiline
                   numberOfLines={3}
-                  placeholderTextColor="#9CA3AF"
+                  containerStyle={styles.inputContainer}
+                  inputContainerStyle={styles.textAreaContainer}
+                  labelStyle={styles.inputLabel}
                 />
               </View>
 
@@ -632,30 +607,32 @@ export default function GuardDashboardIndex() {
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>Assign Parcel</Text>
               <TouchableOpacity onPress={() => setAssignModalVisible(false)}>
-                <Ionicons name="close" size={24} color={Colors.textMuted} />
+                <Ionicons name="close" size={24} color="#D1D5DB" />
               </TouchableOpacity>
             </View>
 
             <View style={styles.modalForm}>
               <View style={styles.inputGroup}>
-                <Text style={styles.inputLabel}>Roll Number *</Text>
-                <TextInput
-                  style={styles.textInput}
+                <GlassTextInput
+                  label="Roll Number *"
+                  inputType="text"
                   placeholder="Enter roll number"
                   value={assignRollNumber}
                   onChangeText={setAssignRollNumber}
-                  placeholderTextColor="#9CA3AF"
+                  containerStyle={styles.inputContainer}
+                  labelStyle={styles.inputLabel}
                 />
               </View>
 
               <View style={styles.inputGroup}>
-                <Text style={styles.inputLabel}>Room Number *</Text>
-                <TextInput
-                  style={styles.textInput}
+                <GlassTextInput
+                  label="Room Number *"
+                  inputType="numeric"
                   placeholder="Enter room number"
                   value={assignRoomNumber}
                   onChangeText={setAssignRoomNumber}
-                  placeholderTextColor="#9CA3AF"
+                  containerStyle={styles.inputContainer}
+                  labelStyle={styles.inputLabel}
                 />
               </View>
 
@@ -689,7 +666,7 @@ export default function GuardDashboardIndex() {
                   setErrorMessage('');
                 }}
               >
-                <Ionicons name="close" size={24} color={Colors.textMuted} />
+                <Ionicons name="close" size={24} color="#D1D5DB" />
               </TouchableOpacity>
             </View>
 
@@ -699,15 +676,15 @@ export default function GuardDashboardIndex() {
               </Text>
 
               <View style={styles.inputGroup}>
-                <Text style={styles.inputLabel}>Enter OTP</Text>
-                <TextInput
-                  style={styles.textInput}
+                <GlassTextInput
+                  label="Enter OTP"
+                  inputType="numeric"
                   placeholder="6-digit OTP"
                   value={enteredOTP}
                   onChangeText={setEnteredOTP}
-                  keyboardType="number-pad"
                   maxLength={6}
-                  placeholderTextColor="#9CA3AF"
+                  containerStyle={styles.inputContainer}
+                  labelStyle={styles.inputLabel}
                 />
               </View>
 
@@ -738,7 +715,7 @@ export default function GuardDashboardIndex() {
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>Scan to Claim Parcel</Text>
               <TouchableOpacity onPress={() => setQrModalVisible(false)}>
-                <Ionicons name="close" size={24} color={Colors.textMuted} />
+                <Ionicons name="close" size={24} color="#D1D5DB" />
               </TouchableOpacity>
             </View>
 
@@ -833,14 +810,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     marginBottom: 12,
     height: 48,
-  },
-  searchIcon: {
-    marginRight: 8,
-  },
-  searchInput: {
-    flex: 1,
-    fontSize: 14,
-    color: Colors.textPrimary,
   },
   contentHeader: {
     marginBottom: 10,
@@ -1014,6 +983,9 @@ const styles = StyleSheet.create({
   modalForm: {
     paddingHorizontal: 24,
   },
+  inputContainer: {
+    marginBottom: 12,
+  },
   inputGroup: {
     marginBottom: 16,
   },
@@ -1022,6 +994,10 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: '#D1D5DB',
     marginBottom: 8,
+  },
+  textAreaContainer: {
+    minHeight: 88,
+    alignItems: 'flex-start',
   },
   textInput: {
     backgroundColor: 'rgba(255, 255, 255, 0.08)',
@@ -1067,7 +1043,7 @@ const styles = StyleSheet.create({
   },
   otpInfo: {
     fontSize: 14,
-    color: Colors.textSecondary,
+    color: '#D1D5DB',
     marginBottom: 16,
     lineHeight: 20,
   },

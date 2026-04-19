@@ -1,6 +1,11 @@
-# Welcome to your Expo app 👋
+# HostelDrop Frontend
 
-This is an [Expo](https://expo.dev) project created with [`create-expo-app`](https://www.npmjs.com/package/create-expo-app).
+This is an [Expo](https://expo.dev) app used by the HostelDrop parcel management system.
+
+## Reusable UI components
+
+- Component prop reference and integration examples:
+- [`components/COMPONENT_USAGE.md`](./components/COMPONENT_USAGE.md)
 
 ## Get started
 

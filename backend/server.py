@@ -35,6 +35,7 @@ from collections import defaultdict
 from collections import deque
 import threading
 from pymongo import ReturnDocument
+from pymongo.errors import PyMongoError
 from contextlib import asynccontextmanager
 
 # Configure logging early so startup config warnings are visible.
@@ -188,6 +189,10 @@ AUTO_DELETE_DELIVERED_INTERVAL_SECONDS = max(
 AUTO_DELETE_DELIVERED_POLL_SECONDS = max(
     1,
     int(os.environ.get("AUTO_DELETE_DELIVERED_POLL_SECONDS", "1"))
+)
+QR_PICKUP_TOKEN_TTL_SECONDS = max(
+    30,
+    int(os.environ.get("QR_PICKUP_TOKEN_TTL_SECONDS", "300"))
 )
 AUTO_DELETE_STATE = {
     "last_run_at": None,
@@ -1266,24 +1271,68 @@ class InMemoryRateLimiter:
             timestamps.append(now)
             return True
 
+
+def get_request_client_ip(request: Request) -> str:
+    forwarded_for = request.headers.get("x-forwarded-for", "")
+    if TRUST_PROXY_HEADERS and forwarded_for:
+        return forwarded_for.split(",")[0].strip() or "unknown"
+    return request.client.host if request.client else "unknown"
+
 auth_rate_limiter = InMemoryRateLimiter(
     max_requests=int(os.environ.get("AUTH_RATE_LIMIT_MAX_REQUESTS", "5")),
     window_seconds=int(os.environ.get("AUTH_RATE_LIMIT_WINDOW_SECONDS", "60")),
     cleanup_interval_seconds=int(os.environ.get("AUTH_RATE_LIMIT_CLEANUP_SECONDS", "60")),
 )
 
+qr_scan_ip_rate_limiter = InMemoryRateLimiter(
+    max_requests=int(os.environ.get("QR_SCAN_RATE_LIMIT_IP_MAX_REQUESTS", "30")),
+    window_seconds=int(os.environ.get("QR_SCAN_RATE_LIMIT_IP_WINDOW_SECONDS", "60")),
+    cleanup_interval_seconds=int(os.environ.get("QR_SCAN_RATE_LIMIT_CLEANUP_SECONDS", "60")),
+)
+
+qr_scan_user_rate_limiter = InMemoryRateLimiter(
+    max_requests=int(os.environ.get("QR_SCAN_RATE_LIMIT_USER_MAX_REQUESTS", "12")),
+    window_seconds=int(os.environ.get("QR_SCAN_RATE_LIMIT_USER_WINDOW_SECONDS", "60")),
+    cleanup_interval_seconds=int(os.environ.get("QR_SCAN_RATE_LIMIT_CLEANUP_SECONDS", "60")),
+)
+
+qr_scan_parcel_rate_limiter = InMemoryRateLimiter(
+    max_requests=int(os.environ.get("QR_SCAN_RATE_LIMIT_PARCEL_MAX_REQUESTS", "20")),
+    window_seconds=int(os.environ.get("QR_SCAN_RATE_LIMIT_PARCEL_WINDOW_SECONDS", "60")),
+    cleanup_interval_seconds=int(os.environ.get("QR_SCAN_RATE_LIMIT_CLEANUP_SECONDS", "60")),
+)
+
 async def enforce_auth_rate_limit(request: Request):
-    forwarded_for = request.headers.get("x-forwarded-for", "")
-    if TRUST_PROXY_HEADERS and forwarded_for:
-        client_ip = forwarded_for.split(",")[0].strip()
-    else:
-        client_ip = request.client.host if request.client else "unknown"
+    client_ip = get_request_client_ip(request)
 
     key = f"{request.url.path}:{client_ip}"
     if not auth_rate_limiter.allow(key):
         raise HTTPException(
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,
             detail="Too many requests. Please try again later.",
+        )
+
+
+async def enforce_qr_scan_rate_limit(request: Request, current_user: dict, parcel_id: str) -> None:
+    client_ip = get_request_client_ip(request)
+    user_id = str(current_user.get("_id", "unknown"))
+
+    if not qr_scan_ip_rate_limiter.allow(f"verify-qr:ip:{client_ip}"):
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Too many QR scan attempts from this network. Please try again later.",
+        )
+
+    if not qr_scan_user_rate_limiter.allow(f"verify-qr:user:{user_id}"):
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Too many QR scan attempts for this account. Please wait and try again.",
+        )
+
+    if not qr_scan_parcel_rate_limiter.allow(f"verify-qr:parcel:{parcel_id}"):
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Too many QR scan attempts for this parcel. Please wait and try again.",
         )
 
 def build_status_event(
@@ -1304,6 +1353,20 @@ def build_status_event(
     if meta:
         event_doc["meta"] = meta
     return event_doc
+
+
+def parcel_claimed_by_user(parcel: Dict[str, Any], current_user: Dict[str, Any]) -> bool:
+    user_id = current_user.get("_id")
+    user_id_str = str(user_id) if user_id is not None else ""
+
+    owner_id = parcel.get("student_id")
+    delegate_id = parcel.get("delegated_receiver_student_id")
+
+    return (
+        owner_id == user_id
+        or str(owner_id) == user_id_str
+        or str(delegate_id) == user_id_str
+    )
 
 
 def ensure_utc_datetime(value: datetime) -> datetime:
@@ -3094,12 +3157,14 @@ async def generate_parcel_qr(request: GenerateQRRequest, current_user: dict = De
     # Generate new token and attach to the parcel document
     qr_token = generate_qr_token()
     qr_generated_at = datetime.utcnow()
+    qr_expires_at = qr_generated_at + timedelta(seconds=QR_PICKUP_TOKEN_TTL_SECONDS)
     await db.parcels.update_one(
         {"_id": parcel_object_id},
         {
             "$set": {
                 "qr_pickup_token_hash": hash_secret_value(qr_token),
                 "otp_sent_at": qr_generated_at,
+                "qr_pickup_token_expires_at": qr_expires_at,
             },
             "$unset": {"qr_pickup_token": ""},
             "$push": {
@@ -3151,16 +3216,26 @@ async def generate_delegation(request: GenerateDelegationRequest, current_user: 
     }
 
 @api_router.post("/parcel/verify-qr")
-async def verify_parcel_qr(request: VerifyQRRequest, current_user: dict = Depends(get_current_user)):
+async def verify_parcel_qr(
+    request: VerifyQRRequest,
+    http_request: Request,
+    current_user: dict = Depends(get_current_user),
+):
     """Student scans the QR and claims their parcel"""
     if current_user["role"] != UserRole.STUDENT:
         raise HTTPException(status_code=403, detail="Only students can claim parcels via QR")
+
+    await enforce_qr_scan_rate_limit(http_request, current_user, request.parcel_id)
     
     parcel_object_id = parse_object_id(request.parcel_id, "parcel ID")
     parcel = await db.parcels.find_one({"_id": parcel_object_id})
     
     if not parcel:
         raise HTTPException(status_code=404, detail="Parcel not found")
+    if parcel["status"] == ParcelStatus.DELIVERED:
+        if parcel_claimed_by_user(parcel, current_user):
+            return {"message": "Parcel already claimed successfully via QR code!"}
+        raise HTTPException(status_code=400, detail="Parcel has already been delivered")
     if parcel["status"] != ParcelStatus.PENDING:
         raise HTTPException(status_code=400, detail="Parcel is not available for pickup")
 
@@ -3188,6 +3263,13 @@ async def verify_parcel_qr(request: VerifyQRRequest, current_user: dict = Depend
     # Verify the token matches
     saved_token_hash = parcel.get("qr_pickup_token_hash")
     saved_token_plain = parcel.get("qr_pickup_token")
+    if not saved_token_hash and not saved_token_plain:
+        raise HTTPException(status_code=401, detail="QR code is invalid or already used")
+
+    qr_expires_at = parcel.get("qr_pickup_token_expires_at")
+    if not qr_expires_at or qr_expires_at < datetime.utcnow():
+        raise HTTPException(status_code=401, detail="Invalid or expired QR code")
+
     token_matches = secret_matches(saved_token_hash, request.token) or saved_token_plain == request.token
     if not token_matches:
         raise HTTPException(status_code=401, detail="Invalid or expired QR code")
@@ -3205,33 +3287,58 @@ async def verify_parcel_qr(request: VerifyQRRequest, current_user: dict = Depend
         "delegated_receiver_student_id": str(current_user["_id"]) if collected_by_delegate else None,
         "delegated_receiver_info": delegated_receiver_info,
     }
-    await db.parcels.update_one(
-        {"_id": parcel_object_id},
-        {
-            "$set": delivered_update_fields,
-            "$push": {
-                "status_history": build_status_event(
-                    ParcelTimelineEvent.DELIVERED,
-                    actor=current_user,
-                    timestamp=delivered_at,
-                    meta={
-                        "method": "QR",
-                        "collected_by_delegate": collected_by_delegate,
-                        "delegated_receiver_student_id": (
-                            str(current_user["_id"]) if collected_by_delegate else None
-                        ),
-                    },
-                )
+    try:
+        update_result = await db.parcels.update_one(
+            {
+                "_id": parcel_object_id,
+                "status": ParcelStatus.PENDING,
+                "$or": [
+                    {"qr_pickup_token_hash": saved_token_hash},
+                    {"qr_pickup_token": request.token},
+                ],
+                "qr_pickup_token_expires_at": {"$gt": datetime.utcnow()},
             },
-            "$unset": {
-                "qr_pickup_token": "",
-                "qr_pickup_token_hash": "",
-                "delegation_code": "",
-                "delegation_code_hash": "",
-                "delegation_expiry": ""
+            {
+                "$set": delivered_update_fields,
+                "$push": {
+                    "status_history": build_status_event(
+                        ParcelTimelineEvent.DELIVERED,
+                        actor=current_user,
+                        timestamp=delivered_at,
+                        meta={
+                            "method": "QR",
+                            "collected_by_delegate": collected_by_delegate,
+                            "delegated_receiver_student_id": (
+                                str(current_user["_id"]) if collected_by_delegate else None
+                            ),
+                        },
+                    )
+                },
+                "$unset": {
+                    "qr_pickup_token": "",
+                    "qr_pickup_token_hash": "",
+                    "delegation_code": "",
+                    "delegation_code_hash": "",
+                    "delegation_expiry": "",
+                    "qr_pickup_token_expires_at": "",
+                }
             }
-        }
-    )
+        )
+    except PyMongoError as exc:
+        logger.warning("QR claim write uncertain for parcel %s: %s", request.parcel_id, exc)
+        latest_parcel = await db.parcels.find_one({"_id": parcel_object_id})
+        if latest_parcel and latest_parcel.get("status") == ParcelStatus.DELIVERED and parcel_claimed_by_user(latest_parcel, current_user):
+            return {"message": "Parcel already claimed successfully via QR code!"}
+        raise HTTPException(
+            status_code=503,
+            detail="Temporary server issue while confirming parcel claim. Please refresh parcel status.",
+        )
+
+    if update_result.modified_count != 1:
+        latest_parcel = await db.parcels.find_one({"_id": parcel_object_id})
+        if latest_parcel and latest_parcel.get("status") == ParcelStatus.DELIVERED and parcel_claimed_by_user(latest_parcel, current_user):
+            return {"message": "Parcel already claimed successfully via QR code!"}
+        raise HTTPException(status_code=409, detail="Parcel claim conflict. Please rescan with a fresh QR code.")
     
     return {"message": "Parcel claimed successfully via QR code!"}
 

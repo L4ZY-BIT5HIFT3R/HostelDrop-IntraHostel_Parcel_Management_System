@@ -81,7 +81,11 @@ android-sdk/
 frontend/.metro-cache/
 frontend/.expo/
 
-# Environment files
+# Environment files (never commit secrets)
+.env
+**/.env
+.env.*
+**/.env.*
 *.env
 *.env.*
 !*.env.example

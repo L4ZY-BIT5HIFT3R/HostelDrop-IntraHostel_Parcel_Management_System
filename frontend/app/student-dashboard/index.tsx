@@ -1,11 +1,10 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import {
   View,
   Text,
   StyleSheet,
   RefreshControl,
   TouchableOpacity,
-  TextInput,
   Animated,
   Modal,
   Pressable,
@@ -20,8 +19,12 @@ import * as Clipboard from 'expo-clipboard';
 import api, { verifyQrCode, generateDelegationCode } from '../../utils/api';
 import { useAuthStore } from '../../store/authStore';
 import { Colors, MinimalCard } from '../../utils/theme';
-import AnimatedCard, { STACK_CARD_HEIGHT, STACK_CARD_SPACING, STACK_FOCUS_OFFSET } from '../../components/AnimatedCard';
+import GlassInput from '../../components/GlassInput';
+import SearchBar from '../../components/SearchBar';
+import AppHeader from '../../components/AppHeader';
+import AnimatedCard, { STACK_CARD_HEIGHT } from '../../components/AnimatedCard';
 import { formatDateInIST } from '../../utils/dateTime';
+import { useAnimatedList } from '../../utils/useAnimatedList';
 
 interface Parcel {
   _id: string;
@@ -69,10 +72,17 @@ export default function StudentDashboardIndex() {
   const [filteredParcels, setFilteredParcels] = useState<Parcel[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [refreshing, setRefreshing] = useState(false);
-  const [listHeight, setListHeight] = useState(0);
-  const [activeIndex, setActiveIndex] = useState(0);
-  const activeIndexRef = useRef(0);
-  const scrollY = useRef(new Animated.Value(0)).current;
+
+  const {
+    activeIndex,
+    scrollY,
+    cardStep,
+    contentContainerStyle,
+    onLayout,
+    onScroll,
+    onScrollEndDrag,
+    onMomentumScrollEnd,
+  } = useAnimatedList({ itemCount: filteredParcels.length });
 
   const [scanning, setScanning] = useState(false);
   const [processingScan, setProcessingScan] = useState(false);
@@ -173,25 +183,6 @@ export default function StudentDashboardIndex() {
       });
     } finally {
       setNotificationsLoading(false);
-    }
-  };
-
-  const getStackPadding = (height: number) => ({
-    top: Math.max(4, (height - STACK_CARD_HEIGHT) / 2 - STACK_FOCUS_OFFSET - 12),
-    bottom: Math.max(120, (height - STACK_CARD_HEIGHT) / 2 + STACK_FOCUS_OFFSET + 96),
-  });
-
-  const updateActiveIndex = (offsetY: number, viewportHeight?: number) => {
-    const height = viewportHeight ?? listHeight;
-    if (height <= 0 || filteredParcels.length === 0) return;
-    const step = STACK_CARD_HEIGHT + STACK_CARD_SPACING;
-    const { top } = getStackPadding(height);
-    const centerY = offsetY + height / 2;
-    const rawIndex = (centerY - top - STACK_CARD_HEIGHT / 2) / step;
-    const nextIndex = Math.max(0, Math.min(filteredParcels.length - 1, Math.round(rawIndex)));
-    if (nextIndex !== activeIndexRef.current) {
-      activeIndexRef.current = nextIndex;
-      setActiveIndex(nextIndex);
     }
   };
 
@@ -302,7 +293,7 @@ export default function StudentDashboardIndex() {
   };
 
   const renderParcelItem = ({ item, index }: { item: Parcel; index: number }) => (
-    <AnimatedCard index={index} activeIndex={activeIndex} scrollY={scrollY}>
+    <AnimatedCard index={index} activeIndex={activeIndex} scrollY={scrollY} status={item.status}>
       <View style={styles.parcelCard}>
         <View style={styles.parcelHeader}>
           <View style={{ flex: 1 }}>
@@ -358,29 +349,31 @@ export default function StudentDashboardIndex() {
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
-      <View style={styles.header}>
-        <TouchableOpacity
-          style={styles.backButton}
-          onPress={async () => {
-            await logout();
-            router.replace('/role-selection');
-          }}
-        >
-          <Ionicons name="arrow-back" size={24} color={Colors.textPrimary} />
-        </TouchableOpacity>
-        <View style={styles.headerTextContainer}>
-          <Text style={styles.headerTitle}>All Parcels</Text>
-          <Text style={styles.headerSubtitle}>{user?.hostel_type} Hostel</Text>
-        </View>
-        <View style={styles.headerActionGroup}>
-          <TouchableOpacity style={styles.notificationButton} onPress={openNotifications}>
-            <Ionicons name="notifications-outline" size={22} color={Colors.textPrimary} />
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.logoutButton} onPress={handleLogout}>
-            <Ionicons name="log-out-outline" size={24} color={Colors.accentRed} />
-          </TouchableOpacity>
-        </View>
-      </View>
+      <AppHeader
+        title="All Parcels"
+        subtitle={`${user?.hostel_type ?? ''} Hostel`}
+        containerStyle={styles.header}
+        titleStyle={styles.headerTitle}
+        subtitleStyle={styles.headerSubtitle}
+        onBackPress={async () => {
+          await logout();
+          router.replace('/role-selection');
+        }}
+        actions={[
+          {
+            icon: 'notifications-outline',
+            onPress: openNotifications,
+            buttonStyle: styles.notificationButton,
+            accessibilityLabel: 'Open notifications',
+          },
+          {
+            icon: 'log-out-outline',
+            color: Colors.accentRed,
+            onPress: handleLogout,
+            accessibilityLabel: 'Logout',
+          },
+        ]}
+      />
 
       <View style={{ paddingHorizontal: 24, paddingTop: 16 }}>
         <TouchableOpacity style={styles.scanButton} onPress={() => { setShowDelegateInput(false); handleStartScan(); }}>
@@ -395,21 +388,12 @@ export default function StudentDashboardIndex() {
       </View>
 
       <View style={styles.content}>
-        <View style={styles.searchContainer}>
-          <Ionicons name="search" size={20} color={Colors.textMuted} style={styles.searchIcon} />
-          <TextInput
-            style={styles.searchInput}
-            placeholder="Search by room, roll number, or name..."
-            value={searchQuery}
-            onChangeText={handleSearch}
-            placeholderTextColor={Colors.textMuted}
-          />
-          {searchQuery.length > 0 && (
-            <TouchableOpacity onPress={() => handleSearch('')}>
-              <Ionicons name="close-circle" size={20} color={Colors.textMuted} />
-            </TouchableOpacity>
-          )}
-        </View>
+        <SearchBar
+          value={searchQuery}
+          onChangeText={handleSearch}
+          placeholder="Search by room, roll number, or name..."
+          containerStyle={styles.searchContainer}
+        />
 
         <Animated.FlatList
           data={filteredParcels}
@@ -418,35 +402,17 @@ export default function StudentDashboardIndex() {
           keyExtractor={(item) => item._id}
           contentContainerStyle={[
             styles.listContainer,
-            listHeight > 0
-              ? {
-                  paddingTop: getStackPadding(listHeight).top,
-                  paddingBottom: getStackPadding(listHeight).bottom,
-                }
-              : null,
+            contentContainerStyle ?? null,
           ]}
-          onLayout={(event) => setListHeight(event.nativeEvent.layout.height)}
-          onScroll={Animated.event(
-            [{ nativeEvent: { contentOffset: { y: scrollY } } }],
-              { useNativeDriver: Platform.OS !== 'web' }
-          )}
+          onLayout={onLayout}
+          onScroll={onScroll}
           scrollEventThrottle={16}
-          snapToInterval={STACK_CARD_HEIGHT + STACK_CARD_SPACING}
+          snapToInterval={cardStep}
           snapToAlignment="center"
           decelerationRate={0.992}
           showsVerticalScrollIndicator={false}
-          onScrollEndDrag={(event) => {
-            updateActiveIndex(
-              event.nativeEvent.contentOffset.y,
-              event.nativeEvent.layoutMeasurement?.height
-            );
-          }}
-          onMomentumScrollEnd={(event) => {
-            updateActiveIndex(
-              event.nativeEvent.contentOffset.y,
-              event.nativeEvent.layoutMeasurement?.height
-            );
-          }}
+          onScrollEndDrag={onScrollEndDrag}
+          onMomentumScrollEnd={onMomentumScrollEnd}
           refreshControl={
             <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={Colors.accent} />
           }
@@ -632,12 +598,13 @@ export default function StudentDashboardIndex() {
               {showDelegateInput && (
                 <View style={styles.delegatePinContainer}>
                   <Text style={styles.delegatePinLabel}>Enter 6-Character PIN from your friend:</Text>
-                  <TextInput
-                    style={styles.delegatePinInput}
+                  <GlassInput
+                    inputType="text"
+                    containerStyle={styles.delegatePinInputWrap}
+                    inputContainerStyle={styles.delegatePinInputContainer}
                     value={delegatePin}
                     onChangeText={setDelegatePin}
                     placeholder="e.g. A4B92X"
-                    placeholderTextColor={Colors.textMuted}
                     autoCapitalize="characters"
                     maxLength={6}
                   />
@@ -724,14 +691,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     marginBottom: 12,
     height: 52,
-  },
-  searchIcon: {
-    marginRight: 8,
-  },
-  searchInput: {
-    flex: 1,
-    fontSize: 14,
-    color: Colors.textPrimary,
   },
   listContainer: {
     paddingBottom: 16,
@@ -906,6 +865,16 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: 'bold',
     letterSpacing: 2,
+  },
+  delegatePinInputWrap: {
+    width: '100%',
+  },
+  delegatePinInputContainer: {
+    borderRadius: 8,
+    backgroundColor: '#FFF',
+    borderColor: Colors.surfaceBorder,
+    borderWidth: 1,
+    paddingHorizontal: 12,
   },
   appAlertOverlay: {
     flex: 1,

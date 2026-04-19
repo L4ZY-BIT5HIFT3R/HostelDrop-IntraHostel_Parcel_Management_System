@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   View,
   Text,
@@ -7,15 +7,16 @@ import {
   Animated,
   TouchableOpacity,
   Modal,
-  Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import api from '../../utils/api';
 import { useAuthStore } from '../../store/authStore';
 import { Colors, MinimalCard } from '../../utils/theme';
+import AppHeader from '../../components/AppHeader';
 import AnimatedCard, { STACK_CARD_SPACING, STACK_FOCUS_OFFSET } from '../../components/AnimatedCard';
 import ParcelTimeline from '../../components/ParcelTimeline';
+import { useAnimatedList } from '../../utils/useAnimatedList';
 
 interface Parcel {
   _id: string;
@@ -56,12 +57,24 @@ export default function MyParcels() {
   const { user } = useAuthStore();
   const [parcels, setParcels] = useState<Parcel[]>([]);
   const [refreshing, setRefreshing] = useState(false);
-  const [listHeight, setListHeight] = useState(0);
-  const [activeIndex, setActiveIndex] = useState(0);
   const [delegateModalVisible, setDelegateModalVisible] = useState(false);
   const [selectedDelegate, setSelectedDelegate] = useState<DelegationReceiverInfo | null>(null);
-  const activeIndexRef = useRef(0);
-  const scrollY = useRef(new Animated.Value(0)).current;
+
+  const {
+    activeIndex,
+    scrollY,
+    cardStep,
+    contentContainerStyle,
+    onLayout,
+    onScroll,
+    onScrollEndDrag,
+    onMomentumScrollEnd,
+  } = useAnimatedList({
+    itemCount: parcels.length,
+    cardHeight: DELIVERED_STACK_CARD_HEIGHT,
+    cardSpacing: STACK_CARD_SPACING,
+    focusOffset: STACK_FOCUS_OFFSET,
+  });
 
   useEffect(() => {
     fetchParcels();
@@ -83,25 +96,6 @@ export default function MyParcels() {
     fetchParcels();
   };
 
-  const getStackPadding = (height: number) => ({
-    top: Math.max(4, (height - DELIVERED_STACK_CARD_HEIGHT) / 2 - STACK_FOCUS_OFFSET - 12),
-    bottom: Math.max(120, (height - DELIVERED_STACK_CARD_HEIGHT) / 2 + STACK_FOCUS_OFFSET + 96),
-  });
-
-  const updateActiveIndex = (offsetY: number, viewportHeight?: number) => {
-    const height = viewportHeight ?? listHeight;
-    if (height <= 0 || parcels.length === 0) return;
-    const step = DELIVERED_STACK_CARD_HEIGHT + STACK_CARD_SPACING;
-    const { top } = getStackPadding(height);
-    const centerY = offsetY + height / 2;
-    const rawIndex = (centerY - top - DELIVERED_STACK_CARD_HEIGHT / 2) / step;
-    const nextIndex = Math.max(0, Math.min(parcels.length - 1, Math.round(rawIndex)));
-    if (nextIndex !== activeIndexRef.current) {
-      activeIndexRef.current = nextIndex;
-      setActiveIndex(nextIndex);
-    }
-  };
-
   const openDelegateDetails = (parcel: Parcel) => {
     if (!parcel.collected_by_delegate) {
       return;
@@ -121,7 +115,7 @@ export default function MyParcels() {
   };
 
   const renderParcelItem = ({ item, index }: { item: Parcel; index: number }) => (
-    <AnimatedCard index={index} activeIndex={activeIndex} scrollY={scrollY}>
+    <AnimatedCard index={index} activeIndex={activeIndex} scrollY={scrollY} status={item.status}>
       <View style={styles.parcelCard}>
         <View style={styles.parcelHeader}>
           <View style={styles.parcelInfo}>
@@ -164,12 +158,13 @@ export default function MyParcels() {
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
-      <View style={styles.header}>
-        <View>
-          <Text style={styles.headerTitle}>My Delivered Parcels</Text>
-          <Text style={styles.headerSubtitle}>{user?.name}</Text>
-        </View>
-      </View>
+      <AppHeader
+        title="My Delivered Parcels"
+        subtitle={user?.name}
+        containerStyle={styles.header}
+        titleStyle={styles.headerTitle}
+        subtitleStyle={styles.headerSubtitle}
+      />
 
       <Animated.FlatList
         data={parcels}
@@ -178,35 +173,17 @@ export default function MyParcels() {
         keyExtractor={(item) => item._id}
         contentContainerStyle={[
           styles.listContainer,
-          listHeight > 0
-            ? {
-                paddingTop: getStackPadding(listHeight).top,
-                paddingBottom: getStackPadding(listHeight).bottom,
-              }
-            : null,
+          contentContainerStyle ?? null,
         ]}
-        onLayout={(event) => setListHeight(event.nativeEvent.layout.height)}
-        onScroll={Animated.event(
-          [{ nativeEvent: { contentOffset: { y: scrollY } } }],
-          { useNativeDriver: Platform.OS !== 'web' }
-        )}
+        onLayout={onLayout}
+        onScroll={onScroll}
         scrollEventThrottle={16}
-        snapToInterval={DELIVERED_STACK_CARD_HEIGHT + STACK_CARD_SPACING}
+        snapToInterval={cardStep}
         snapToAlignment="center"
         decelerationRate={0.992}
         showsVerticalScrollIndicator={false}
-        onScrollEndDrag={(event) => {
-          updateActiveIndex(
-            event.nativeEvent.contentOffset.y,
-            event.nativeEvent.layoutMeasurement?.height
-          );
-        }}
-        onMomentumScrollEnd={(event) => {
-          updateActiveIndex(
-            event.nativeEvent.contentOffset.y,
-            event.nativeEvent.layoutMeasurement?.height
-          );
-        }}
+        onScrollEndDrag={onScrollEndDrag}
+        onMomentumScrollEnd={onMomentumScrollEnd}
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={Colors.accent} />
         }

@@ -54,3 +54,35 @@ export function extractErrorMessage(error: unknown, fallback: string): string {
 
   return fallback;
 }
+
+export function extractErrorCode(error: unknown): string | null {
+  if (!isRecord(error)) {
+    return null;
+  }
+
+  const response = error.response;
+  if (isRecord(response)) {
+    const data = response.data;
+    if (isRecord(data)) {
+      const candidate = normalizeMessage(
+        data.code ?? data.error_code ?? data.errorCode,
+        '',
+      ).trim();
+      if (candidate) {
+        return candidate.toUpperCase();
+      }
+    }
+
+    const status = response.status;
+    if (typeof status === 'number' && Number.isFinite(status)) {
+      return `HTTP_${status}`;
+    }
+  }
+
+  const candidate = normalizeMessage(error.code, '').trim();
+  if (candidate) {
+    return candidate.toUpperCase();
+  }
+
+  return null;
+}
