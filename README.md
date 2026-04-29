@@ -270,4 +270,4 @@ Security checklist before publishing or deploying:
 
 Copyright (c) 2026 HostelDrop contributors.
 
-All rights reserved. This project is provided for academic and portfolio review purposes only. No permission is granted to copy, modify, distribute, sublicense, or use this software without explicit written permission from the owner.
+All rights reserved.
