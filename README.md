@@ -5,7 +5,7 @@
 <h1 align="center">HostelDrop</h1>
 
 <p align="center">
-  Intra-hostel parcel management system for reception guards, students, and administrators.
+  A full-stack intra-hostel parcel management system for students, reception guards, and administrators.
 </p>
 
 <p align="center">
@@ -13,81 +13,98 @@
   <img alt="Expo" src="https://img.shields.io/badge/Expo-54-000020?logo=expo&logoColor=white" />
   <img alt="React Native" src="https://img.shields.io/badge/React%20Native-0.81-61DAFB?logo=react&logoColor=111111" />
   <img alt="MongoDB" src="https://img.shields.io/badge/MongoDB-Motor-47A248?logo=mongodb&logoColor=white" />
-  <img alt="Python" src="https://img.shields.io/badge/Python-3.x-3776AB?logo=python&logoColor=white" />
+  <img alt="TypeScript" src="https://img.shields.io/badge/TypeScript-5.9-3178C6?logo=typescript&logoColor=white" />
 </p>
 
 ## Overview
 
-HostelDrop digitizes parcel intake and pickup inside a hostel. Guards can add incoming parcels, assign them to students or rooms, generate OTP or QR pickup flows, and track delivered items. Students can register, sign in, view their parcels, receive notifications, request room changes, and delegate QR-based pickups. Administrators can manage users, room change requests, student room history, and delivered-parcel cleanup.
+HostelDrop digitizes parcel intake, assignment, notification, pickup, and delivery tracking inside a hostel. Guards can log incoming parcels, assign them to students or rooms, verify pickup with OTP or QR flows, and review delivered parcels. Students can register, sign in, view parcel updates, receive notifications, request room changes, and delegate pickup. Admins can manage users, room transfers, room change requests, and delivered-parcel maintenance.
 
-## Features
+## Key Features
 
-- Role-based access for students, guards, and administrators.
-- Student registration, login, forgot-password, and password-change flows.
-- Guard parcel intake with pending, unassigned, and delivered parcel states.
-- OTP verification for parcel pickup.
-- QR pickup tokens with expiry, scan rate limiting, and delegated pickup support.
-- Student dashboard for parcel visibility, notifications, profile, and room changes.
-- Admin tools for users, room transfers, room history, and delivered-parcel maintenance.
-- Email delivery through Gmail SMTP app passwords.
-- Expo push notification support for parcel updates.
-- Security guardrails for JWT secrets, admin credentials, input validation, CORS, and response headers.
-- Locust and k6 stress-test assets with generated reports.
+- Role-based flows for students, guards, and admins.
+- Student registration with email OTP verification and password-based login.
+- Guard dashboard for parcel intake, assignment, update, search, and delivery tracking.
+- OTP pickup verification for traditional parcel handoff.
+- Short-lived QR pickup tokens with single-use validation.
+- Delegated pickup support with authenticated receiver tracking.
+- Student dashboards for all hostel parcels, personal parcels, profile, notifications, and room changes.
+- Admin tools for user management, room transfer, room history, and delivered-parcel cleanup.
+- Gmail SMTP app-password support for OTP and parcel notification emails.
+- Expo push notification support.
+- Backend security guardrails for JWT secrets, password strength, CORS, rate limits, input validation, and response headers.
+- Pytest, Locust, and k6 coverage for security checks and backend load validation.
 
 ## Tech Stack
 
-| Layer | Technology |
+| Layer | Tools |
 | --- | --- |
 | Mobile app | Expo, React Native, Expo Router, TypeScript, Zustand |
-| API | FastAPI, Pydantic, Uvicorn |
+| Backend API | FastAPI, Pydantic, Uvicorn |
 | Database | MongoDB with Motor async driver |
-| Authentication | JWT bearer tokens, passlib bcrypt |
-| Notifications | SMTP email, Expo push notifications |
+| Auth | JWT bearer tokens, passlib bcrypt |
+| Notifications | Gmail SMTP, Expo push notifications |
 | Testing | Pytest, Locust, k6 |
+
+## User Roles
+
+| Role | Capabilities |
+| --- | --- |
+| Student | Register, log in, view parcels, receive notifications, scan QR pickup, delegate pickup, request room changes |
+| Guard | Add parcels, assign parcels, search parcels, send OTP, generate QR, verify pickup, view delivered parcels |
+| Admin | Add users, manage students and guards, approve room changes, transfer rooms, inspect room history, clean delivered records |
 
 ## Repository Structure
 
 ```text
 .
-|-- backend/                 # FastAPI API, MongoDB models, scripts, env template
-|-- frontend/                # Expo Router mobile app and reusable UI components
-|-- tests/                   # Pytest security and API guardrail tests
-|-- stress-tests/            # Locust and k6 load/stress test suites and reports
-|-- document/                # Setup notes, maintenance docs, and project documents
-|-- qrAuthFlow readme/       # QR authentication and delegation workflow notes
-|-- logo/                    # Project logo used by this README
-|-- STARTUP.md               # Local startup notes
-|-- populate_display_ids.py  # Utility script for display IDs
+|-- backend/                 # FastAPI server, MongoDB scripts, seed/import utilities
+|-- frontend/                # Expo Router React Native app
+|-- tests/                   # Pytest backend security and guardrail tests
+|-- stress-tests/            # k6 and Locust stress-test scripts plus result artifacts
+|-- document/                # Project PDF/shell artifacts
+|-- logo/                    # README and project logo assets
+|-- populate_display_ids.py  # Utility script for parcel display IDs
 |-- pyrightconfig.json       # Python type-checking configuration
 `-- README.md
 ```
 
-## Getting Started
-
-### Prerequisites
+## Prerequisites
 
 - Python 3.11 or newer
 - Node.js 20.x or 22.x
-- MongoDB running locally or a MongoDB connection string
+- MongoDB running locally or a reachable MongoDB connection string
 - Expo development environment for Android, iOS, or web
+- Optional: k6 and Locust for load testing
 
-### 1. Clone and configure
+## Local Setup
+
+Clone the repository:
 
 ```bash
 git clone <your-repository-url>
 cd HostelDrop-IntraHostel_Parcel_Management_System
 ```
 
-Create local environment files from the committed templates:
+Create local environment files:
 
 ```bash
 cp backend/.env.example backend/.env
 cp frontend/.env.example frontend/.env
 ```
 
-Update `backend/.env` with your MongoDB URL, JWT secret, admin password, and optional SMTP credentials. Update `frontend/.env` if the backend is not running at `http://localhost:8001`.
+On Windows PowerShell:
 
-### 2. Start the backend
+```powershell
+Copy-Item backend\.env.example backend\.env
+Copy-Item frontend\.env.example frontend\.env
+```
+
+Update `backend/.env` with your MongoDB URL, JWT secret, admin password, and optional SMTP credentials. Update `frontend/.env` if your backend is not available at `http://localhost:8001`.
+
+## Run The Backend
+
+From the repository root:
 
 ```bash
 python -m venv .venv
@@ -96,53 +113,91 @@ pip install -r backend/requirements.txt
 python -m uvicorn backend.server:app --host 0.0.0.0 --port 8001 --reload
 ```
 
-On Windows PowerShell, activate the virtual environment with:
+On Windows PowerShell:
 
 ```powershell
+python -m venv .venv
 .\.venv\Scripts\Activate.ps1
+pip install -r backend\requirements.txt
+python -m uvicorn backend.server:app --host 0.0.0.0 --port 8001 --reload
 ```
 
-The API will be available at:
+Backend URLs:
 
-- Base API: `http://localhost:8001/api`
+- API root: `http://localhost:8001/api`
 - Swagger docs: `http://localhost:8001/docs`
 
-### 3. Seed local data
-
-Run these from the repository root after configuring the backend environment:
+Seed local data when needed:
 
 ```bash
 python backend/seed_database.py
 python backend/add_sample_parcels.py
 ```
 
-### 4. Start the frontend
+## Run The Frontend
+
+From the `frontend` directory:
 
 ```bash
-cd frontend
 npm install
 npx expo start -c
 ```
 
 Use the Expo CLI options to open the app on Android, iOS, Expo Go, or web.
 
+For physical-device testing, expose the backend and set `EXPO_PUBLIC_BACKEND_URL` to the tunnel URL:
+
+```bash
+npx cloudflared tunnel --url http://localhost:8001
+```
+
 ## Environment Variables
 
-Backend variables are documented in [`backend/.env.example`](backend/.env.example). The most important values are:
+Backend variables are defined in [`backend/.env.example`](backend/.env.example).
 
-- `MONGO_URL` and `DB_NAME` for MongoDB.
-- `JWT_SECRET_KEY` and `ADMIN_PASSWORD` for authentication security.
-- `CORS_ORIGINS` for allowed frontend origins.
-- `SMTP_EMAIL` and `SMTP_APP_PASSWORD` for Gmail SMTP delivery.
-- `INCLUDE_DEBUG_OTP_IN_RESPONSE=false` for production-safe OTP behavior.
+| Variable | Purpose |
+| --- | --- |
+| `APP_ENV` | Runtime environment, use `production` in deployments |
+| `MONGO_URL` | MongoDB connection string |
+| `DB_NAME` | MongoDB database name |
+| `JWT_SECRET_KEY` | JWT signing secret |
+| `ADMIN_EMAIL` / `ADMIN_PASSWORD` | Admin login credentials |
+| `CORS_ORIGINS` | Allowed frontend origins |
+| `SMTP_EMAIL` / `SMTP_APP_PASSWORD` | Gmail SMTP credentials |
+| `INCLUDE_DEBUG_OTP_IN_RESPONSE` | Development-only OTP debugging switch |
 
-Frontend variables are documented in [`frontend/.env.example`](frontend/.env.example):
+Frontend variables are defined in [`frontend/.env.example`](frontend/.env.example).
 
-- `EXPO_PUBLIC_BACKEND_URL` points the mobile app to the backend API host.
+| Variable | Purpose |
+| --- | --- |
+| `EXPO_PUBLIC_BACKEND_URL` | Backend host used by the mobile app |
 
 Never commit real `.env` files or production secrets.
 
-## Core API Areas
+## Email Setup
+
+HostelDrop uses Gmail SMTP app passwords for OTP and parcel notification emails.
+
+1. Enable 2-step verification on the Gmail account.
+2. Create an app password from Google Account security settings.
+3. Add the values to `backend/.env`:
+
+```env
+SMTP_EMAIL=your-email@gmail.com
+SMTP_APP_PASSWORD=your-16-character-app-password
+```
+
+When SMTP is not configured in development, the backend logs OTP activity instead of failing the request. Keep sensitive logging disabled outside local development.
+
+## Pickup Workflows
+
+| Workflow | Summary |
+| --- | --- |
+| OTP pickup | Guard sends an OTP to the assigned student, verifies it at reception, and marks the parcel delivered |
+| QR pickup | Guard generates a short-lived QR token, student scans it from an authenticated app session, and the backend validates ownership before delivery |
+| Delegated pickup | Student delegates pickup to another registered student, and the backend records the delegated receiver after QR validation |
+
+## API Areas
 
 | Area | Main endpoints |
 | --- | --- |
@@ -154,37 +209,65 @@ Never commit real `.env` files or production secrets.
 
 ## Testing
 
-Run backend guardrail tests from the repository root:
+Run backend tests:
 
 ```bash
 pytest
 ```
 
-Run frontend lint checks:
+Run frontend linting:
 
 ```bash
 cd frontend
 npm run lint
 ```
 
-Load and rate-limit test material is available in [`stress-tests/`](stress-tests/), including Locust and k6 scenarios plus generated reports.
+Run k6 scenarios from the repository root:
 
-## Security Notes
+```bash
+k6 run stress-tests/k6/load-ramp.js
+k6 run stress-tests/k6/spike.js
+k6 run stress-tests/k6/soak.js
+k6 run stress-tests/k6/breakpoint.js
+k6 run stress-tests/k6/input-growth.js
+```
+
+Run Locust:
+
+```bash
+python -m locust -f stress-tests/locustfile.py --host http://localhost:8001
+```
+
+Stress-test environment variables:
+
+```bash
+BASE_URL=http://localhost:8001
+HOSTEL_TYPE=BOYS
+GUARD_USERNAME=<guard_username>
+GUARD_PASSWORD=<guard_password>
+```
+
+## Maintenance
+
+Frontend dependency checks:
+
+```bash
+cd frontend
+npm run deps:doctor
+npm run deps:outdated
+npm run maintenance:android
+```
+
+Security checklist before publishing or deploying:
 
 - Keep `APP_ENV=production` in deployed environments.
 - Use a strong `JWT_SECRET_KEY` and admin password.
 - Keep `INCLUDE_DEBUG_OTP_IN_RESPONSE=false` outside local development.
-- Store secrets in deployment secret managers or CI/CD variables, not in the repository.
-- Review [`STARTUP.md`](STARTUP.md) for local operational notes and environment handling.
-
-## Documentation
-
-- Frontend details: [`frontend/README.md`](frontend/README.md)
-- Gmail setup: [`document/GMAIL_SETUP.md`](document/GMAIL_SETUP.md)
-- Android dependency maintenance: [`document/ANDROID_DEPENDENCY_MAINTENANCE_PLAN.md`](document/ANDROID_DEPENDENCY_MAINTENANCE_PLAN.md)
-- QR auth workflow: [`qrAuthFlow readme/qr_auth_flow.md`](qrAuthFlow%20readme/qr_auth_flow.md)
-- Stress-test reports: [`stress-tests/`](stress-tests/)
+- Store secrets in deployment secret managers or CI/CD variables.
+- Verify that no `.env` files are tracked.
 
 ## License
 
-Add your project license here before publishing the repository publicly.
+Copyright (c) 2026 HostelDrop contributors.
+
+All rights reserved. This project is provided for academic and portfolio review purposes only. No permission is granted to copy, modify, distribute, sublicense, or use this software without explicit written permission from the owner.
