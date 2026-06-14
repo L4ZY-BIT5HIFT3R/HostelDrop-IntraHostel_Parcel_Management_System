@@ -1,11 +1,10 @@
-import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Colors, Fonts } from '../utils/theme';
 import AnimatedCard from '../components/AnimatedCard';
-import Brandmark from '../components/Brandmark';
 import FeedbackButton from '../components/FeedbackButton';
 
 type RoleKey = 'GUARD' | 'STUDENT' | 'ADMIN';
@@ -63,12 +62,14 @@ export default function RoleSelection() {
   return (
     <SafeAreaView style={styles.container}>
       <FeedbackButton style={styles.feedbackButton} />
-      <View style={styles.content}>
+      <ScrollView
+        contentContainerStyle={styles.content}
+        showsVerticalScrollIndicator={false}
+        bounces={false}
+      >
+        <View style={styles.main}>
         {/* Rubber-stamp masthead */}
         <View style={styles.header}>
-          <View style={styles.brandBadge}>
-            <Brandmark size={64} background="transparent" />
-          </View>
           <View style={styles.stamp}>
             <Text style={styles.stampText}>RECEIVING DESK</Text>
           </View>
@@ -121,7 +122,14 @@ export default function RoleSelection() {
             </AnimatedCard>
           ))}
         </View>
-      </View>
+        </View>
+
+        <View style={styles.footer}>
+          <View style={styles.footerRule} />
+          <Text style={styles.footerNote}>SIGNED · SEALED · DELIVERED</Text>
+          <Text style={styles.footerSub}>your hostel&apos;s parcel desk, digitized</Text>
+        </View>
+      </ScrollView>
     </SafeAreaView>
   );
 }
@@ -132,10 +140,12 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.bg,
   },
   content: {
-    flex: 1,
+    flexGrow: 1,
     paddingHorizontal: 26,
-    justifyContent: 'center',
+    paddingTop: 44,
+    paddingBottom: 24,
   },
+  main: {},
   feedbackButton: {
     position: 'absolute',
     top: 16,
@@ -146,19 +156,30 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: 30,
   },
-  brandBadge: {
-    width: 64,
-    height: 64,
-    borderRadius: 18,
-    backgroundColor: Colors.accent,
+  footer: {
+    marginTop: 'auto',
+    paddingTop: 24,
     alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 18,
-    shadowColor: '#7A2613',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.28,
-    shadowRadius: 10,
-    elevation: 4,
+    gap: 5,
+  },
+  footerRule: {
+    width: 44,
+    height: 2,
+    borderRadius: 1,
+    backgroundColor: Colors.accent,
+    marginBottom: 6,
+  },
+  footerNote: {
+    fontFamily: Fonts.mono,
+    fontSize: 12,
+    letterSpacing: 2,
+    fontWeight: '700',
+    color: Colors.textSecondary,
+  },
+  footerSub: {
+    fontSize: 12,
+    letterSpacing: 0.3,
+    color: Colors.textMuted,
   },
   stamp: {
     borderWidth: 2,

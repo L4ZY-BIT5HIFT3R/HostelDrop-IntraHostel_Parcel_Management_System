@@ -1,8 +1,7 @@
-import React from 'react';
-import { StyleProp, StyleSheet, TouchableOpacity, View, ViewStyle } from 'react-native';
+import React, { useState } from 'react';
+import { StyleProp, StyleSheet, TextInput, TouchableOpacity, View, ViewStyle } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import GlassInput from './GlassInput';
-import { Colors, GlassInput as GlassInputStyle } from '../utils/theme';
+import { Colors } from '../utils/theme';
 
 type Props = {
   value: string;
@@ -10,51 +9,47 @@ type Props = {
   placeholder?: string;
   onClear?: () => void;
   containerStyle?: StyleProp<ViewStyle>;
-  inputContainerStyle?: StyleProp<ViewStyle>;
-  clearButtonStyle?: StyleProp<ViewStyle>;
 };
 
 export default function SearchBar({
   value,
   onChangeText,
-  placeholder = 'Search...',
+  placeholder = 'Search…',
   onClear,
   containerStyle,
-  inputContainerStyle,
-  clearButtonStyle,
 }: Props) {
+  const [focused, setFocused] = useState(false);
   const safeValue = value ?? '';
-  const hasQuery = safeValue.trim().length > 0;
+  const hasQuery = safeValue.length > 0;
 
   const handleClear = () => {
-    if (!safeValue.length) {
-      onClear?.();
-      return;
-    }
-
     onChangeText('');
     onClear?.();
   };
 
   return (
-    <View style={[styles.container, containerStyle]}>
-      <GlassInput
-        leftIconName="search"
-        placeholder={placeholder}
+    <View style={[styles.field, focused && styles.fieldFocused, containerStyle]}>
+      <Ionicons name="search" size={18} color={focused ? Colors.accent : Colors.textMuted} />
+      <TextInput
+        style={styles.input}
         value={safeValue}
         onChangeText={onChangeText}
-        containerStyle={styles.inputWrap}
-        inputContainerStyle={[styles.inputContainer, inputContainerStyle]}
+        placeholder={placeholder}
+        placeholderTextColor={Colors.textMuted}
+        onFocus={() => setFocused(true)}
+        onBlur={() => setFocused(false)}
+        autoCapitalize="none"
+        autoCorrect={false}
+        returnKeyType="search"
       />
-
       {hasQuery ? (
         <TouchableOpacity
           onPress={handleClear}
-          style={[styles.clearButton, clearButtonStyle]}
+          hitSlop={8}
           accessibilityRole="button"
           accessibilityLabel="Clear search"
         >
-          <Ionicons name="close-circle" size={20} color={Colors.textMuted} />
+          <Ionicons name="close-circle" size={18} color={Colors.textMuted} />
         </TouchableOpacity>
       ) : null}
     </View>
@@ -62,23 +57,24 @@ export default function SearchBar({
 }
 
 const styles = StyleSheet.create({
-  container: {
+  field: {
     flexDirection: 'row',
     alignItems: 'center',
-    ...GlassInputStyle,
-    borderRadius: 12,
-    height: 48,
-    paddingHorizontal: 12,
+    gap: 10,
+    height: 50,
+    paddingHorizontal: 14,
+    backgroundColor: Colors.surface,
+    borderWidth: 1,
+    borderColor: Colors.surfaceBorder,
+    borderRadius: 10,
   },
-  inputWrap: {
+  fieldFocused: {
+    borderColor: Colors.accent,
+  },
+  input: {
     flex: 1,
-  },
-  inputContainer: {
-    borderWidth: 0,
-    backgroundColor: 'transparent',
-    paddingHorizontal: 0,
-  },
-  clearButton: {
-    marginLeft: 8,
+    fontSize: 15,
+    color: Colors.textPrimary,
+    paddingVertical: 0,
   },
 });
