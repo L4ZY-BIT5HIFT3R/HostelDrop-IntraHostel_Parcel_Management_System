@@ -78,8 +78,14 @@ agenthub/agents/youtube/db
 
 # Mobile development
 android-sdk/
+.expo/
+**/.expo/
 frontend/.metro-cache/
-frontend/.expo/
+**/.metro-cache/
+
+# Test caches
+.pytest_cache/
+**/.pytest_cache/
 
 # Environment files (never commit secrets)
 .env
