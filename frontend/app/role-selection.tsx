@@ -5,6 +5,7 @@ import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Colors, Fonts } from '../utils/theme';
 import AnimatedCard from '../components/AnimatedCard';
+import Brandmark from '../components/Brandmark';
 import FeedbackButton from '../components/FeedbackButton';
 
 type RoleKey = 'GUARD' | 'STUDENT' | 'ADMIN';
@@ -65,6 +66,9 @@ export default function RoleSelection() {
       <View style={styles.content}>
         {/* Rubber-stamp masthead */}
         <View style={styles.header}>
+          <View style={styles.brandBadge}>
+            <Brandmark size={64} background="transparent" />
+          </View>
           <View style={styles.stamp}>
             <Text style={styles.stampText}>RECEIVING DESK</Text>
           </View>
@@ -141,6 +145,20 @@ const styles = StyleSheet.create({
   header: {
     alignItems: 'center',
     marginBottom: 30,
+  },
+  brandBadge: {
+    width: 64,
+    height: 64,
+    borderRadius: 18,
+    backgroundColor: Colors.accent,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 18,
+    shadowColor: '#7A2613',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.28,
+    shadowRadius: 10,
+    elevation: 4,
   },
   stamp: {
     borderWidth: 2,
