@@ -1,6 +1,7 @@
 import { Stack } from 'expo-router';
 import { useEffect } from 'react';
 import { Platform, Text, TextInput } from 'react-native';
+import { useFonts } from 'expo-font';
 import { useAuthStore } from '../store/authStore';
 
 const APP_FONT_FAMILY = Platform.select({
@@ -16,6 +17,9 @@ type TextInputDefaultsTarget = typeof TextInput & { defaultProps?: { style?: unk
 
 export default function RootLayout() {
   const checkAuth = useAuthStore((state) => state.checkAuth);
+  const [fontsLoaded] = useFonts({
+    SpaceMono: require('../assets/fonts/SpaceMono-Regular.ttf'),
+  });
 
   useEffect(() => {
     if (APP_FONT_FAMILY && !hasAppliedGlobalFontDefaults) {
@@ -36,8 +40,12 @@ export default function RootLayout() {
     checkAuth();
   }, [checkAuth]);
 
+  if (!fontsLoaded) {
+    return null;
+  }
+
   return (
-    <Stack screenOptions={{ 
+    <Stack screenOptions={{
       headerShown: false, 
       animation: 'fade' as const 
     }}>
