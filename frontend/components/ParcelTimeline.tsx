@@ -1,6 +1,6 @@
 import React, { useMemo } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
-import { Colors } from '../utils/theme';
+import { Colors, Fonts } from '../utils/theme';
 import { formatDateTimeInIST } from '../utils/dateTime';
 
 type TimelineEvent = {
@@ -190,8 +190,8 @@ const styles = StyleSheet.create({
     borderColor: Colors.surfaceBorder,
   },
   dotCurrent: {
-    borderColor: Colors.textSecondary,
-    backgroundColor: Colors.textSecondary,
+    borderColor: Colors.accent,
+    backgroundColor: Colors.accent,
   },
   textBlock: {
     flex: 1,
@@ -201,16 +201,20 @@ const styles = StyleSheet.create({
     marginLeft: 8,
   },
   stepLabel: {
-    fontSize: 12,
+    fontFamily: Fonts.mono,
+    fontSize: 11,
+    letterSpacing: 1,
+    textTransform: 'uppercase',
     color: Colors.textSecondary,
-    fontWeight: '500',
+    fontWeight: '600',
   },
   stepLabelDone: {
     color: Colors.textPrimary,
-    fontWeight: '600',
+    fontWeight: '700',
   },
   timeText: {
-    fontSize: 11,
+    fontFamily: Fonts.mono,
+    fontSize: 10.5,
     color: Colors.textMuted,
   },
   timeTextCompact: {
