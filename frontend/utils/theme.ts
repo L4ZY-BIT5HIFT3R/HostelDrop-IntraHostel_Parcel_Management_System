@@ -52,9 +52,11 @@ export const Colors = {
   overlay: 'rgba(34, 29, 22, 0.55)',
 };
 
-// Distinctive typography: a monospace "tracking code" family is the signature.
+// Distinctive typography: Space Mono is the signature "tracking code" family,
+// loaded in app/_layout.tsx via expo-font (bundled at assets/fonts). Falls back
+// to the platform monospace if the custom face is unavailable.
 export const Fonts = {
-  mono: Platform.select({ ios: 'Menlo', android: 'monospace', default: 'monospace' }) as string,
+  mono: Platform.select({ ios: 'SpaceMono', android: 'SpaceMono', default: 'SpaceMono' }) as string,
 };
 
 // Paper sits flat-ish on the desk: crisp borders over heavy float.
