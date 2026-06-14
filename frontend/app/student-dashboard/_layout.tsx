@@ -1,10 +1,12 @@
 import { Tabs } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useEffect } from 'react';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { registerForPushNotificationsAsync } from '../../utils/notifications';
 import { Colors } from '../../utils/theme';
 
 export default function StudentDashboardLayout() {
+  const insets = useSafeAreaInsets();
   useEffect(() => {
     registerForPushNotificationsAsync();
   }, []);
@@ -17,9 +19,9 @@ export default function StudentDashboardLayout() {
           backgroundColor: Colors.tabBar,
           borderTopWidth: 1,
           borderTopColor: Colors.tabBarBorder,
-          height: 70,
-          paddingBottom: 12,
-          paddingTop: 12,
+          height: 60 + insets.bottom,
+          paddingBottom: insets.bottom + 8,
+          paddingTop: 10,
         },
         headerStyle: {
           backgroundColor: Colors.bg,
