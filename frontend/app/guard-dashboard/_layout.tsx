@@ -1,10 +1,12 @@
 import { Tabs, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { Platform, Pressable, StyleSheet, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Colors } from '../../utils/theme';
 
 export default function GuardDashboardLayout() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
 
   return (
     <Tabs
@@ -15,8 +17,8 @@ export default function GuardDashboardLayout() {
           backgroundColor: Colors.tabBar,
           borderTopWidth: 1,
           borderTopColor: Colors.tabBarBorder,
-          height: 68,
-          paddingBottom: 10,
+          height: 60 + insets.bottom,
+          paddingBottom: insets.bottom + 8,
           paddingTop: 10,
         },
         headerStyle: {

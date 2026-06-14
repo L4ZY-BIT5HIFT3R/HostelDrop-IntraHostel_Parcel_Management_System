@@ -14,7 +14,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useIsFocused } from '@react-navigation/native';
 import api from '../../utils/api';
-import { Colors, GlassCard, GlassInput } from '../../utils/theme';
+import { Colors, Fonts, GlassCard } from '../../utils/theme';
 import SearchBar from '../../components/SearchBar';
 import AnimatedCard, { STACK_CARD_SPACING, STACK_FOCUS_OFFSET } from '../../components/AnimatedCard';
 import ParcelTimeline from '../../components/ParcelTimeline';
@@ -299,7 +299,7 @@ export default function DeliveredParcels() {
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>{studentModalTitle}</Text>
               <TouchableOpacity onPress={() => setStudentModalVisible(false)}>
-                <Ionicons name="close" size={24} color="#D1D5DB" />
+                <Ionicons name="close" size={24} color={Colors.textMuted} />
               </TouchableOpacity>
             </View>
 
@@ -394,12 +394,7 @@ const styles = StyleSheet.create({
     paddingBottom: 16,
   },
   searchContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    ...GlassInput,
-    paddingHorizontal: 12,
     marginBottom: 8,
-    height: 48,
   },
   contentHeader: {
     flexDirection: 'row',
@@ -536,8 +531,8 @@ const styles = StyleSheet.create({
     padding: 24,
   },
   modalContent: {
-    backgroundColor: '#1A1A2E',
-    borderRadius: 24,
+    backgroundColor: Colors.bg,
+    borderRadius: 14,
     borderWidth: 1,
     borderColor: Colors.surfaceBorder,
     padding: 24,
@@ -548,12 +543,13 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 24,
+    marginBottom: 20,
   },
   modalTitle: {
     fontSize: 20,
-    fontWeight: 'bold',
-    color: '#FFFFFF',
+    fontWeight: '800',
+    letterSpacing: -0.3,
+    color: Colors.textPrimary,
   },
   loadingContainer: {
     padding: 40,
@@ -584,8 +580,10 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   detailLabel: {
-    fontSize: 12,
-    fontWeight: '600',
+    fontFamily: Fonts.mono,
+    fontSize: 10.5,
+    letterSpacing: 1,
+    textTransform: 'uppercase',
     color: Colors.textMuted,
     marginBottom: 4,
   },

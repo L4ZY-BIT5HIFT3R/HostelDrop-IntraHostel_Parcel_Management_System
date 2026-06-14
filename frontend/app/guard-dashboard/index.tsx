@@ -11,23 +11,20 @@ import {
   Platform,
   Alert,
   ScrollView,
-  Animated,
+  FlatList,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import api, { generateQrCode } from '../../utils/api';
 import { useAuthStore } from '../../store/authStore';
-import { Colors, GlassCard, GlassInput } from '../../utils/theme';
+import { Colors, Fonts, GlassCard } from '../../utils/theme';
 import GlassTextInput from '../../components/GlassInput';
 import SearchBar from '../../components/SearchBar';
 import AppHeader from '../../components/AppHeader';
-import AnimatedCard, { STACK_CARD_HEIGHT } from '../../components/AnimatedCard';
-import StatusStamp from '../../components/StatusStamp';
-import TrackingTag from '../../components/TrackingTag';
+import ParcelRow from '../../components/ParcelRow';
+import ParcelDetailSheet from '../../components/ParcelDetailSheet';
 import { extractErrorMessage } from '../../utils/errorMessage';
-import { formatDateInIST } from '../../utils/dateTime';
-import { useAnimatedList } from '../../utils/useAnimatedList';
 
 interface Parcel {
   _id: string;
@@ -56,17 +53,7 @@ export default function GuardDashboardIndex() {
   const [qrModalVisible, setQrModalVisible] = useState(false);
   const [qrString, setQrString] = useState('');
   const [selectedParcel, setSelectedParcel] = useState<Parcel | null>(null);
-
-  const {
-    activeIndex,
-    scrollY,
-    cardStep,
-    contentContainerStyle,
-    onLayout,
-    onScroll,
-    onScrollEndDrag,
-    onMomentumScrollEnd,
-  } = useAnimatedList({ itemCount: filteredParcels.length });
+  const [detailParcel, setDetailParcel] = useState<Parcel | null>(null);
 
   // Add Parcel Form
   const [roomNumber, setRoomNumber] = useState('');
@@ -261,78 +248,9 @@ export default function GuardDashboardIndex() {
     ]);
   };
 
-  const renderParcelItem = ({ item, index }: { item: Parcel; index: number }) => {
-    const isUnassigned = item.status === 'UNASSIGNED';
-    const isPending = item.status === 'PENDING';
-
-    return (
-      <AnimatedCard index={index} activeIndex={activeIndex} scrollY={scrollY} status={item.status}>
-        <View style={styles.parcelCard}>
-          <View style={styles.parcelHeader}>
-            <View style={{ flex: 1 }}>
-              {item.display_id ? (
-                <TrackingTag code={item.display_id} style={{ marginBottom: 8 }} />
-              ) : null}
-              <View style={styles.parcelInfo}>
-                <Text style={styles.roomNumber}>Room {item.room_number}</Text>
-                <StatusStamp status={item.status} small />
-              </View>
-            </View>
-            <Text style={styles.date}>
-              {formatDateInIST(item.created_at)}
-            </Text>
-          </View>
-
-          {item.student_name && (
-            <View style={styles.studentInfo}>
-              <Ionicons name="person" size={16} color={Colors.textMuted} />
-              <Text style={styles.studentName}>{item.student_name}</Text>
-              {item.roll_number && <Text style={styles.rollNumber}>({item.roll_number})</Text>}
-            </View>
-          )}
-
-          {item.description && (
-            <Text style={styles.description}>{item.description}</Text>
-          )}
-
-          <View style={styles.actions}>
-            <TouchableOpacity
-              style={[styles.actionButton, styles.editButton]}
-              onPress={() => openEditParcelModal(item)}
-            >
-              <Ionicons name="create-outline" size={18} color={Colors.accent} />
-              <Text style={styles.editButtonText}>Edit</Text>
-            </TouchableOpacity>
-
-            {isUnassigned && (
-              <TouchableOpacity
-                style={[styles.actionButton, styles.assignButton]}
-                onPress={() => {
-                  setSelectedParcel(item);
-                  setAssignModalVisible(true);
-                }}
-              >
-                <Ionicons name="person-add" size={18} color={Colors.accentBlue} />
-                <Text style={styles.assignButtonText}>Assign</Text>
-              </TouchableOpacity>
-            )}
-
-            {isPending && (
-              <>
-                <TouchableOpacity
-                  style={[styles.actionButton, styles.qrButton]}
-                  onPress={() => handleShowQR(item)}
-                >
-                  <Ionicons name="qr-code" size={18} color={Colors.accent} />
-                  <Text style={styles.qrButtonText}>Show QR</Text>
-                </TouchableOpacity>
-              </>
-            )}
-          </View>
-        </View>
-      </AnimatedCard>
-    );
-  };
+  const renderParcelItem = ({ item }: { item: Parcel }) => (
+    <ParcelRow parcel={item} onPress={() => setDetailParcel(item)} />
+  );
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
@@ -369,24 +287,13 @@ export default function GuardDashboardIndex() {
           <Text style={styles.sectionTitle}>Pending & Unassigned Parcels</Text>
         </View>
 
-        <Animated.FlatList
+        <FlatList
           data={filteredParcels}
-          extraData={activeIndex}
           renderItem={renderParcelItem}
           keyExtractor={(item) => item._id}
-          contentContainerStyle={[
-            styles.listContainer,
-            contentContainerStyle ?? null,
-          ]}
-          onLayout={onLayout}
-          onScroll={onScroll}
-          scrollEventThrottle={16}
-          snapToInterval={cardStep}
-          snapToAlignment="center"
-          decelerationRate={0.992}
+          contentContainerStyle={styles.listContainer}
+          ItemSeparatorComponent={() => <View style={{ height: 10 }} />}
           showsVerticalScrollIndicator={false}
-          onScrollEndDrag={onScrollEndDrag}
-          onMomentumScrollEnd={onMomentumScrollEnd}
           refreshControl={
             <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={Colors.accent} />
           }
@@ -416,7 +323,7 @@ export default function GuardDashboardIndex() {
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>Add New Parcel</Text>
               <TouchableOpacity onPress={() => setAddModalVisible(false)}>
-                <Ionicons name="close" size={24} color="#D1D5DB" />
+                <Ionicons name="close" size={24} color={Colors.textMuted} />
               </TouchableOpacity>
             </View>
 
@@ -495,7 +402,7 @@ export default function GuardDashboardIndex() {
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>Edit Parcel</Text>
               <TouchableOpacity onPress={() => setEditModalVisible(false)}>
-                <Ionicons name="close" size={24} color="#D1D5DB" />
+                <Ionicons name="close" size={24} color={Colors.textMuted} />
               </TouchableOpacity>
             </View>
 
@@ -574,7 +481,7 @@ export default function GuardDashboardIndex() {
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>Assign Parcel</Text>
               <TouchableOpacity onPress={() => setAssignModalVisible(false)}>
-                <Ionicons name="close" size={24} color="#D1D5DB" />
+                <Ionicons name="close" size={24} color={Colors.textMuted} />
               </TouchableOpacity>
             </View>
 
@@ -623,7 +530,7 @@ export default function GuardDashboardIndex() {
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>Scan to Claim Parcel</Text>
               <TouchableOpacity onPress={() => setQrModalVisible(false)}>
-                <Ionicons name="close" size={24} color="#D1D5DB" />
+                <Ionicons name="close" size={24} color={Colors.textMuted} />
               </TouchableOpacity>
             </View>
 
@@ -656,6 +563,52 @@ export default function GuardDashboardIndex() {
           </View>
         </View>
       </Modal>
+
+      {/* Parcel detail sheet */}
+      <ParcelDetailSheet parcel={detailParcel} onClose={() => setDetailParcel(null)}>
+        <TouchableOpacity
+          style={[styles.sheetBtn, styles.sheetBtnGhost]}
+          onPress={() => {
+            const p = detailParcel;
+            setDetailParcel(null);
+            if (p) openEditParcelModal(p);
+          }}
+        >
+          <Ionicons name="create-outline" size={18} color={Colors.textPrimary} />
+          <Text style={styles.sheetBtnGhostText}>Edit</Text>
+        </TouchableOpacity>
+
+        {detailParcel?.status === 'UNASSIGNED' && (
+          <TouchableOpacity
+            style={[styles.sheetBtn, styles.sheetBtnPrimary]}
+            onPress={() => {
+              const p = detailParcel;
+              setDetailParcel(null);
+              if (p) {
+                setSelectedParcel(p);
+                setAssignModalVisible(true);
+              }
+            }}
+          >
+            <Ionicons name="person-add" size={18} color="#FFFFFF" />
+            <Text style={styles.sheetBtnPrimaryText}>Assign</Text>
+          </TouchableOpacity>
+        )}
+
+        {detailParcel?.status === 'PENDING' && (
+          <TouchableOpacity
+            style={[styles.sheetBtn, styles.sheetBtnPrimary]}
+            onPress={() => {
+              const p = detailParcel;
+              setDetailParcel(null);
+              if (p) handleShowQR(p);
+            }}
+          >
+            <Ionicons name="qr-code" size={18} color="#FFFFFF" />
+            <Text style={styles.sheetBtnPrimaryText}>Show QR</Text>
+          </TouchableOpacity>
+        )}
+      </ParcelDetailSheet>
     </SafeAreaView>
   );
 }
@@ -712,12 +665,7 @@ const styles = StyleSheet.create({
     paddingBottom: 16,
   },
   searchContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    ...GlassInput,
-    paddingHorizontal: 12,
     marginBottom: 12,
-    height: 48,
   },
   contentHeader: {
     marginBottom: 10,
@@ -736,7 +684,6 @@ const styles = StyleSheet.create({
   },
   parcelCard: {
     ...GlassCard,
-    height: STACK_CARD_HEIGHT,
     padding: 16,
     overflow: 'hidden',
   },
@@ -813,6 +760,35 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     borderWidth: 1,
   },
+  sheetBtn: {
+    flexGrow: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    height: 46,
+    borderRadius: 10,
+    borderWidth: 1,
+    paddingHorizontal: 16,
+  },
+  sheetBtnGhost: {
+    backgroundColor: Colors.surface,
+    borderColor: Colors.surfaceBorder,
+  },
+  sheetBtnGhostText: {
+    color: Colors.textPrimary,
+    fontSize: 15,
+    fontWeight: '700',
+  },
+  sheetBtnPrimary: {
+    backgroundColor: Colors.accent,
+    borderColor: Colors.accent,
+  },
+  sheetBtnPrimaryText: {
+    color: '#FFFFFF',
+    fontSize: 15,
+    fontWeight: '700',
+  },
   assignButton: {
     borderColor: 'rgba(96,165,250,0.3)',
     backgroundColor: Colors.accentBlueDim,
@@ -866,27 +842,28 @@ const styles = StyleSheet.create({
     justifyContent: 'flex-end',
   },
   modalContent: {
-    backgroundColor: '#1A1A2E',
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
+    backgroundColor: Colors.bg,
+    borderTopLeftRadius: 18,
+    borderTopRightRadius: 18,
     borderWidth: 1,
     borderColor: Colors.surfaceBorder,
     borderBottomWidth: 0,
-    paddingTop: 24,
+    paddingTop: 14,
     paddingBottom: 40,
-    maxHeight: '80%',
+    maxHeight: '85%',
   },
   modalHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     paddingHorizontal: 24,
-    marginBottom: 24,
+    marginBottom: 20,
   },
   modalTitle: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    color: '#FFFFFF',
+    fontSize: 22,
+    fontWeight: '800',
+    letterSpacing: -0.3,
+    color: Colors.textPrimary,
   },
   modalForm: {
     paddingHorizontal: 24,
@@ -898,9 +875,12 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
   inputLabel: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#D1D5DB',
+    fontFamily: Fonts.mono,
+    fontSize: 11,
+    fontWeight: '700',
+    letterSpacing: 1,
+    textTransform: 'uppercase',
+    color: Colors.textSecondary,
     marginBottom: 8,
   },
   textAreaContainer: {
@@ -908,14 +888,14 @@ const styles = StyleSheet.create({
     alignItems: 'flex-start',
   },
   textInput: {
-    backgroundColor: 'rgba(255, 255, 255, 0.08)',
+    backgroundColor: Colors.surfaceHover,
     borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.24)',
-    borderRadius: 12,
+    borderColor: Colors.surfaceBorder,
+    borderRadius: 8,
     paddingHorizontal: 16,
     paddingVertical: 12,
     fontSize: 16,
-    color: '#FFFFFF',
+    color: Colors.textPrimary,
   },
   textArea: {
     height: 80,
@@ -951,7 +931,7 @@ const styles = StyleSheet.create({
   },
   otpInfo: {
     fontSize: 14,
-    color: '#D1D5DB',
+    color: Colors.textSecondary,
     marginBottom: 16,
     lineHeight: 20,
   },

@@ -6,6 +6,7 @@ import {
   RefreshControl,
   TouchableOpacity,
   Animated,
+  FlatList,
   Modal,
   Pressable,
   Platform,
@@ -22,11 +23,9 @@ import { Colors, MinimalCard } from '../../utils/theme';
 import GlassInput from '../../components/GlassInput';
 import SearchBar from '../../components/SearchBar';
 import AppHeader from '../../components/AppHeader';
-import AnimatedCard, { STACK_CARD_HEIGHT } from '../../components/AnimatedCard';
-import StatusStamp from '../../components/StatusStamp';
-import TrackingTag from '../../components/TrackingTag';
+import ParcelRow from '../../components/ParcelRow';
+import ParcelDetailSheet from '../../components/ParcelDetailSheet';
 import { formatDateInIST } from '../../utils/dateTime';
-import { useAnimatedList } from '../../utils/useAnimatedList';
 
 interface Parcel {
   _id: string;
@@ -74,17 +73,7 @@ export default function StudentDashboardIndex() {
   const [filteredParcels, setFilteredParcels] = useState<Parcel[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [refreshing, setRefreshing] = useState(false);
-
-  const {
-    activeIndex,
-    scrollY,
-    cardStep,
-    contentContainerStyle,
-    onLayout,
-    onScroll,
-    onScrollEndDrag,
-    onMomentumScrollEnd,
-  } = useAnimatedList({ itemCount: filteredParcels.length });
+  const [detailParcel, setDetailParcel] = useState<Parcel | null>(null);
 
   const [scanning, setScanning] = useState(false);
   const [processingScan, setProcessingScan] = useState(false);
@@ -311,47 +300,8 @@ export default function StudentDashboardIndex() {
     });
   };
 
-  const renderParcelItem = ({ item, index }: { item: Parcel; index: number }) => (
-    <AnimatedCard index={index} activeIndex={activeIndex} scrollY={scrollY} status={item.status}>
-      <View style={styles.parcelCard}>
-        <View style={styles.parcelHeader}>
-          <View style={{ flex: 1 }}>
-            {item.display_id ? (
-              <TrackingTag code={item.display_id} style={styles.trackingTag} />
-            ) : null}
-            <View style={styles.parcelInfo}>
-              <Text style={styles.roomNumber}>Room {item.room_number}</Text>
-              <StatusStamp status={item.status} small />
-            </View>
-          </View>
-              <Text style={styles.date}>
-                {formatDateInIST(item.created_at)}
-              </Text>
-        </View>
-
-        {item.student_name && (
-          <View style={styles.studentInfo}>
-            <Ionicons name="person" size={16} color={Colors.textMuted} />
-            <Text style={styles.studentName}>{item.student_name}</Text>
-            {item.roll_number && <Text style={styles.rollNumber}>({item.roll_number})</Text>}
-          </View>
-        )}
-
-        {item.description && (
-          <Text style={styles.description}>{item.description}</Text>
-        )}
-
-        {item.student_id === user?._id && item.status === 'PENDING' && (
-          <TouchableOpacity
-            style={styles.delegateButton}
-            onPress={() => handleDelegatePickup(item._id)}
-          >
-            <Ionicons name="people-outline" size={16} color="#FFF" />
-            <Text style={styles.delegateButtonText}>Delegate Pickup to Friend</Text>
-          </TouchableOpacity>
-        )}
-      </View>
-    </AnimatedCard>
+  const renderParcelItem = ({ item }: { item: Parcel }) => (
+    <ParcelRow parcel={item} onPress={() => setDetailParcel(item)} />
   );
 
   return (
@@ -402,24 +352,13 @@ export default function StudentDashboardIndex() {
           containerStyle={styles.searchContainer}
         />
 
-        <Animated.FlatList
+        <FlatList
           data={filteredParcels}
-          extraData={activeIndex}
           renderItem={renderParcelItem}
           keyExtractor={(item) => item._id}
-          contentContainerStyle={[
-            styles.listContainer,
-            contentContainerStyle ?? null,
-          ]}
-          onLayout={onLayout}
-          onScroll={onScroll}
-          scrollEventThrottle={16}
-          snapToInterval={cardStep}
-          snapToAlignment="center"
-          decelerationRate={0.992}
+          contentContainerStyle={styles.listContainer}
+          ItemSeparatorComponent={() => <View style={{ height: 10 }} />}
           showsVerticalScrollIndicator={false}
-          onScrollEndDrag={onScrollEndDrag}
-          onMomentumScrollEnd={onMomentumScrollEnd}
           refreshControl={
             <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={Colors.accent} />
           }
@@ -621,6 +560,23 @@ export default function StudentDashboardIndex() {
           </SafeAreaView>
         </View>
       )}
+
+      {/* Parcel detail sheet */}
+      <ParcelDetailSheet parcel={detailParcel} onClose={() => setDetailParcel(null)}>
+        {detailParcel?.student_id === user?._id && detailParcel?.status === 'PENDING' && (
+          <TouchableOpacity
+            style={styles.sheetBtn}
+            onPress={() => {
+              const p = detailParcel;
+              setDetailParcel(null);
+              if (p) handleDelegatePickup(p._id);
+            }}
+          >
+            <Ionicons name="people-outline" size={18} color="#FFFFFF" />
+            <Text style={styles.sheetBtnText}>Delegate Pickup to a Friend</Text>
+          </TouchableOpacity>
+        )}
+      </ParcelDetailSheet>
     </SafeAreaView>
   );
 }
@@ -689,24 +645,31 @@ const styles = StyleSheet.create({
     paddingBottom: 16,
   },
   searchContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: Colors.surfaceHover,
-    borderWidth: 1,
-    borderColor: Colors.surfaceBorder,
-    borderRadius: 12,
-    paddingHorizontal: 16,
     marginBottom: 12,
-    height: 52,
   },
   listContainer: {
     paddingBottom: 16,
   },
   parcelCard: {
     ...MinimalCard,
-    height: STACK_CARD_HEIGHT,
     padding: 20,
     overflow: 'hidden',
+  },
+  sheetBtn: {
+    flexGrow: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    height: 48,
+    borderRadius: 10,
+    paddingHorizontal: 16,
+    backgroundColor: Colors.accent,
+  },
+  sheetBtnText: {
+    color: '#FFFFFF',
+    fontSize: 15,
+    fontWeight: '700',
   },
   parcelHeader: {
     flexDirection: 'row',
