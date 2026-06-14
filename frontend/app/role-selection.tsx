@@ -24,8 +24,8 @@ const ROLES: {
     title: 'Guard',
     description: 'Log, assign & hand over parcels',
     icon: 'shield-checkmark',
-    ink: Colors.accentTeal,
-    inkBg: Colors.accentTealDim,
+    ink: Colors.accentBlue,
+    inkBg: Colors.accentBlueDim,
   },
   {
     key: 'STUDENT',
@@ -42,8 +42,8 @@ const ROLES: {
     title: 'Admin',
     description: 'Manage users, rooms & records',
     icon: 'briefcase',
-    ink: Colors.accentBlue,
-    inkBg: Colors.accentBlueDim,
+    ink: Colors.accentRed,
+    inkBg: Colors.accentRedDim,
   },
 ];
 
