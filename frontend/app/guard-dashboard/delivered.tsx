@@ -18,6 +18,7 @@ import { Colors, GlassCard, GlassInput } from '../../utils/theme';
 import SearchBar from '../../components/SearchBar';
 import AnimatedCard, { STACK_CARD_SPACING, STACK_FOCUS_OFFSET } from '../../components/AnimatedCard';
 import ParcelTimeline from '../../components/ParcelTimeline';
+import StatusStamp from '../../components/StatusStamp';
 import { extractErrorMessage } from '../../utils/errorMessage';
 import { useAnimatedList } from '../../utils/useAnimatedList';
 
@@ -177,10 +178,7 @@ export default function DeliveredParcels() {
         <View style={styles.parcelHeader}>
           <View style={styles.parcelInfo}>
             <Text style={styles.roomNumber}>Room {item.room_number}</Text>
-            <View style={styles.deliveredBadge}>
-              <Ionicons name="checkmark-circle" size={16} color={Colors.accentGreen} />
-              <Text style={styles.deliveredText}>Delivered</Text>
-            </View>
+            <StatusStamp status="DELIVERED" small />
           </View>
           <View style={styles.headerActions}>
             {item.collected_by_delegate && (
