@@ -11,12 +11,12 @@ export default function StudentDashboardLayout() {
   return (
     <Tabs
       screenOptions={{
-        tabBarActiveTintColor: Colors.textPrimary,
-        tabBarInactiveTintColor: '#BBBBBB',
+        tabBarActiveTintColor: Colors.accent,
+        tabBarInactiveTintColor: Colors.textMuted,
         tabBarStyle: {
           backgroundColor: Colors.tabBar,
           borderTopWidth: 1,
-          borderTopColor: '#CCCCCC',
+          borderTopColor: Colors.tabBarBorder,
           height: 70,
           paddingBottom: 12,
           paddingTop: 12,
