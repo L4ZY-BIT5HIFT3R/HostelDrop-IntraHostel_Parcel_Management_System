@@ -1,10 +1,10 @@
 {
   "expo": {
-    "name": "Hostel Parcel Manager",
+    "name": "HostelDrop",
     "slug": "frontend",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/images/iiitg-logo.png",
+    "icon": "./assets/images/hosteldrop-icon.png",
     "scheme": "frontend",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
@@ -18,8 +18,8 @@
     },
     "android": {
       "adaptiveIcon": {
-        "foregroundImage": "./assets/images/iiitg-logo.png",
-        "backgroundColor": "#FFFFFF"
+        "foregroundImage": "./assets/images/hosteldrop-icon.png",
+        "backgroundColor": "#D23F1C"
       },
       "edgeToEdgeEnabled": true,
       "package": "com.anonymous.frontend"
@@ -27,17 +27,17 @@
     "web": {
       "bundler": "metro",
       "output": "static",
-      "favicon": "./assets/images/iiitg-logo.png"
+      "favicon": "./assets/images/hosteldrop-icon.png"
     },
     "plugins": [
       "expo-router",
       [
         "expo-splash-screen",
         {
-          "image": "./assets/images/iiitg-logo.png",
+          "image": "./assets/images/hosteldrop-splash.png",
           "imageWidth": 200,
           "resizeMode": "contain",
-          "backgroundColor": "#FFFFFF"
+          "backgroundColor": "#ECE5D6"
         }
       ],
       "expo-secure-store"
