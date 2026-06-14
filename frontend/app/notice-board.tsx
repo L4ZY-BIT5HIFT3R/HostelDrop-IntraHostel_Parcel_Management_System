@@ -3,8 +3,9 @@ import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, ScrollView
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
-import { Colors } from '../utils/theme';
+import { Colors, Fonts } from '../utils/theme';
 import { useAuthStore } from '../store/authStore';
+import FeedbackButton from '../components/FeedbackButton';
 
 const NOTICE_POINTS = [
   'This app is for hostel parcel management only and must be used for official campus operations.',
@@ -35,11 +36,12 @@ export default function NoticeBoard() {
 
   return (
     <SafeAreaView style={styles.container}>
+      <FeedbackButton style={styles.feedbackButton} />
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
         <View style={styles.headerBlock}>
           <View style={styles.badge}>
-            <Ionicons name="notifications-outline" size={18} color={Colors.textPrimary} />
-            <Text style={styles.badgeText}>Notice Board</Text>
+            <Ionicons name="reader-outline" size={15} color={Colors.accent} />
+            <Text style={styles.badgeText}>BULLETIN</Text>
           </View>
           <Text style={styles.title}>Important Guidelines</Text>
           <Text style={styles.subtitle}>Please read before continuing to the app.</Text>
@@ -86,11 +88,11 @@ export default function NoticeBoard() {
           disabled={isLoading || !hasAcknowledged}
         >
           {isLoading ? (
-            <ActivityIndicator color={Colors.bg} size="small" />
+            <ActivityIndicator color="#FFFFFF" size="small" />
           ) : (
             <>
               <Text style={styles.continueText}>Continue to App</Text>
-              <Ionicons name="arrow-forward" size={18} color={Colors.bg} />
+              <Ionicons name="arrow-forward" size={18} color="#FFFFFF" />
             </>
           )}
         </TouchableOpacity>
@@ -107,9 +109,15 @@ const styles = StyleSheet.create({
   scrollContent: {
     flexGrow: 1,
     paddingHorizontal: 24,
-    paddingTop: 16,
+    paddingTop: 68,
     paddingBottom: 32,
     justifyContent: 'center',
+  },
+  feedbackButton: {
+    position: 'absolute',
+    top: 16,
+    right: 24,
+    zIndex: 10,
   },
   headerBlock: {
     marginBottom: 20,
@@ -118,23 +126,26 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     alignSelf: 'flex-start',
-    gap: 8,
-    paddingVertical: 6,
-    paddingHorizontal: 12,
-    borderRadius: 999,
-    borderWidth: 1,
-    borderColor: Colors.surfaceBorder,
-    backgroundColor: Colors.surface,
-    marginBottom: 14,
+    gap: 7,
+    paddingVertical: 5,
+    paddingHorizontal: 10,
+    borderRadius: 4,
+    borderWidth: 1.5,
+    borderColor: Colors.accent,
+    marginBottom: 16,
+    transform: [{ rotate: '-2deg' }],
   },
   badgeText: {
-    fontSize: 13,
-    color: Colors.textPrimary,
-    fontWeight: '600',
+    fontFamily: Fonts.mono,
+    fontSize: 12,
+    color: Colors.accent,
+    fontWeight: '800',
+    letterSpacing: 2,
   },
   title: {
     fontSize: 30,
-    fontWeight: '700',
+    fontWeight: '800',
+    letterSpacing: -0.4,
     color: Colors.textPrimary,
     marginBottom: 8,
   },
@@ -147,7 +158,7 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.surface,
     borderWidth: 1,
     borderColor: Colors.surfaceBorder,
-    borderRadius: 18,
+    borderRadius: 10,
     padding: 20,
     marginBottom: 18,
   },
@@ -157,11 +168,12 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   noticeNumber: {
-    width: 24,
-    fontSize: 15,
-    color: Colors.textPrimary,
+    width: 26,
+    fontFamily: Fonts.mono,
+    fontSize: 14,
+    color: Colors.accent,
     fontWeight: '700',
-    paddingTop: 1,
+    paddingTop: 2,
   },
   noticeText: {
     flex: 1,
@@ -197,7 +209,7 @@ const styles = StyleSheet.create({
   },
   continueButton: {
     height: 54,
-    borderRadius: 14,
+    borderRadius: 10,
     backgroundColor: Colors.accent,
     flexDirection: 'row',
     alignItems: 'center',
@@ -205,9 +217,10 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   continueText: {
-    color: Colors.bg,
+    color: '#FFFFFF',
     fontSize: 16,
     fontWeight: '700',
+    letterSpacing: 0.3,
   },
   disabledButton: {
     opacity: 0.65,

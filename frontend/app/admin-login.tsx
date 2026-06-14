@@ -14,7 +14,7 @@ import { Ionicons } from '@expo/vector-icons';
 import api from '../utils/api';
 import { useAuthStore } from '../store/authStore';
 import GlassInput from '../components/GlassInput';
-import { Colors } from '../utils/theme';
+import { Colors, Fonts } from '../utils/theme';
 import { extractErrorMessage } from '../utils/errorMessage';
 
 export default function AdminLogin() {
@@ -172,24 +172,28 @@ const styles = StyleSheet.create({
     marginBottom: 48,
   },
   iconContainer: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
-    backgroundColor: Colors.surface,
-    borderWidth: 1,
-    borderColor: Colors.surfaceBorder,
+    width: 72,
+    height: 72,
+    borderRadius: 16,
+    backgroundColor: Colors.accentRedDim,
+    borderWidth: 1.5,
+    borderColor: Colors.accentRed,
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 20,
   },
   title: {
     fontSize: 28,
-    fontWeight: 'bold',
+    fontWeight: '800',
+    letterSpacing: -0.4,
     color: Colors.textPrimary,
     marginBottom: 8,
   },
   subtitle: {
-    fontSize: 16,
+    fontFamily: Fonts.mono,
+    fontSize: 12,
+    letterSpacing: 1.5,
+    textTransform: 'uppercase',
     color: Colors.textSecondary,
   },
   form: {
@@ -211,7 +215,7 @@ const styles = StyleSheet.create({
   },
   loginButton: {
     backgroundColor: Colors.accent,
-    borderRadius: 12,
+    borderRadius: 10,
     height: 52,
     alignItems: 'center',
     justifyContent: 'center',
