@@ -239,6 +239,23 @@ export default function StudentDashboardIndex() {
 
   const handleBarcodeScanned = async ({ data }: { data: string }) => {
     if (processingScan) return;
+
+    // In delegated pickup the friend's 6-character PIN is required. The camera
+    // auto-fires on the first QR it sees, so guard against scanning before the
+    // PIN is entered — otherwise the backend rejects it with a confusing
+    // "belongs to a different student" error.
+    if (showDelegateInput && delegatePin.trim().length !== 6) {
+      setProcessingScan(true);
+      setScanning(false);
+      showAppAlert({
+        title: 'PIN Required',
+        message: 'Enter the full 6-character PIN from your friend, then tap "Pickup for a Friend" again to scan.',
+        variant: 'error',
+      });
+      setProcessingScan(false);
+      return;
+    }
+
     setProcessingScan(true);
     setScanning(false);
     try {

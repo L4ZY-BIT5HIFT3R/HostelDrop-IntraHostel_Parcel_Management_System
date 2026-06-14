@@ -63,7 +63,7 @@ export async function registerForPushNotificationsAsync() {
       // Send to backend
       await api.put('/auth/student/expo-token', { expo_push_token: token });
 
-    } catch (e) {
+    } catch {
       // Ignore errors silently
     }
   } else {
