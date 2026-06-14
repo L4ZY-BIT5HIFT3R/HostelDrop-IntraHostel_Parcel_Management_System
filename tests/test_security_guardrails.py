@@ -126,7 +126,9 @@ def test_guard_cannot_send_otp_for_other_hostel_parcel():
         "role": server.UserRole.GUARD,
         "hostel_type": server.HostelType.BOYS,
     }
-    server.db = SimpleNamespace(
+    # The parcel handlers resolve ``db`` from their own module namespace after
+    # the backend was modularized, so the stub must target that module.
+    server.parcel_routes.db = SimpleNamespace(
         parcels=SimpleNamespace(
             find_one=AsyncMock(
                 return_value={
@@ -168,7 +170,8 @@ def test_guard_cannot_fetch_student_from_other_hostel():
         "role": server.UserRole.GUARD,
         "hostel_type": server.HostelType.BOYS,
     }
-    server.db = SimpleNamespace(
+    # get_student_details lives in the parcels router module post-modularization.
+    server.parcel_routes.db = SimpleNamespace(
         users=SimpleNamespace(
             find_one=AsyncMock(
                 return_value={
