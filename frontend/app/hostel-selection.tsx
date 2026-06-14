@@ -4,8 +4,20 @@ import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useState, useEffect } from 'react';
-import { Colors } from '../utils/theme';
+import { Colors, Fonts } from '../utils/theme';
 import AnimatedCard from '../components/AnimatedCard';
+
+const HOSTELS: {
+  key: 'BOYS' | 'GIRLS';
+  code: string;
+  title: string;
+  icon: keyof typeof Ionicons.glyphMap;
+  ink: string;
+  inkBg: string;
+}[] = [
+  { key: 'BOYS', code: 'BLK-A', title: 'Boys Hostel', icon: 'male', ink: Colors.accentBlue, inkBg: Colors.accentBlueDim },
+  { key: 'GIRLS', code: 'BLK-B', title: 'Girls Hostel', icon: 'female', ink: Colors.accent, inkBg: Colors.accentDim },
+];
 
 export default function HostelSelection() {
   const router = useRouter();
@@ -33,42 +45,37 @@ export default function HostelSelection() {
     <SafeAreaView style={styles.container}>
       <View style={styles.content}>
         <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
-          <Ionicons name="arrow-back" size={24} color={Colors.textPrimary} />
+          <Ionicons name="arrow-back" size={22} color={Colors.textPrimary} />
         </TouchableOpacity>
 
         <View style={styles.header}>
-          <Text style={styles.title}>Select Hostel Type</Text>
-          <Text style={styles.description}>Choose your hostel to continue</Text>
+          <Text style={styles.eyebrow}>{'// STEP 02'}</Text>
+          <Text style={styles.title}>Select Block</Text>
+          <Text style={styles.description}>Which hostel are you with?</Text>
         </View>
 
         <View style={styles.cardContainer}>
-          <AnimatedCard index={0}>
-            <TouchableOpacity
-              style={styles.card}
-              onPress={() => handleHostelSelect('BOYS')}
-              activeOpacity={0.7}
-            >
-              <View style={styles.iconContainer}>
-                <Ionicons name="male" size={44} color={Colors.textPrimary} />
-              </View>
-              <Text style={styles.cardTitle}>Boys Hostel</Text>
-              <Ionicons name="chevron-forward" size={24} color={Colors.textMuted} style={styles.chevron} />
-            </TouchableOpacity>
-          </AnimatedCard>
-
-          <AnimatedCard index={1}>
-            <TouchableOpacity
-              style={styles.card}
-              onPress={() => handleHostelSelect('GIRLS')}
-              activeOpacity={0.7}
-            >
-              <View style={styles.iconContainer}>
-                <Ionicons name="female" size={44} color={Colors.textPrimary} />
-              </View>
-              <Text style={styles.cardTitle}>Girls Hostel</Text>
-              <Ionicons name="chevron-forward" size={24} color={Colors.textMuted} style={styles.chevron} />
-            </TouchableOpacity>
-          </AnimatedCard>
+          {HOSTELS.map((hostel, index) => (
+            <AnimatedCard key={hostel.key} index={index}>
+              <TouchableOpacity
+                style={styles.tag}
+                onPress={() => handleHostelSelect(hostel.key)}
+                activeOpacity={0.85}
+              >
+                <View style={styles.tagTop}>
+                  <View style={styles.hole} />
+                  <Text style={styles.tagCode}>{hostel.code}</Text>
+                </View>
+                <View style={styles.tagBody}>
+                  <View style={[styles.iconTile, { backgroundColor: hostel.inkBg, borderColor: hostel.ink }]}>
+                    <Ionicons name={hostel.icon} size={28} color={hostel.ink} />
+                  </View>
+                  <Text style={styles.cardTitle}>{hostel.title}</Text>
+                  <Ionicons name="arrow-forward" size={20} color={hostel.ink} />
+                </View>
+              </TouchableOpacity>
+            </AnimatedCard>
+          ))}
         </View>
       </View>
     </SafeAreaView>
@@ -82,62 +89,95 @@ const styles = StyleSheet.create({
   },
   content: {
     flex: 1,
-    padding: 32,
+    padding: 28,
   },
   backButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+    width: 42,
+    height: 42,
+    borderRadius: 8,
     backgroundColor: Colors.surface,
     borderWidth: 1,
     borderColor: Colors.surfaceBorder,
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 24,
+    marginBottom: 28,
   },
   header: {
-    marginBottom: 56,
+    marginBottom: 44,
+  },
+  eyebrow: {
+    fontFamily: Fonts.mono,
+    fontSize: 12,
+    letterSpacing: 1.5,
+    color: Colors.textMuted,
+    marginBottom: 10,
   },
   title: {
-    fontSize: 28,
-    fontWeight: '700',
+    fontSize: 32,
+    fontWeight: '800',
+    letterSpacing: -0.5,
     color: Colors.textPrimary,
-    marginBottom: 12,
-    lineHeight: 34,
+    marginBottom: 8,
   },
   description: {
-    fontSize: 16,
+    fontSize: 15,
     color: Colors.textSecondary,
   },
   cardContainer: {
-    gap: 20,
+    gap: 16,
   },
-  card: {
-    flexDirection: 'row',
-    alignItems: 'center',
+  tag: {
     backgroundColor: Colors.surface,
     borderWidth: 1,
     borderColor: Colors.surfaceBorder,
-    borderRadius: 16,
-    padding: 24,
+    borderRadius: 10,
+    paddingHorizontal: 18,
+    paddingTop: 12,
+    paddingBottom: 18,
+    shadowColor: '#3B3122',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.12,
+    shadowRadius: 10,
+    elevation: 3,
   },
-  iconContainer: {
-    width: 72,
-    height: 72,
-    borderRadius: 20,
+  tagTop: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 14,
+  },
+  hole: {
+    width: 14,
+    height: 14,
+    borderRadius: 7,
+    backgroundColor: Colors.bg,
     borderWidth: 1,
     borderColor: Colors.surfaceBorder,
+  },
+  tagCode: {
+    fontFamily: Fonts.mono,
+    fontSize: 12,
+    letterSpacing: 1,
+    color: Colors.textMuted,
+  },
+  tagBody: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  iconTile: {
+    width: 56,
+    height: 56,
+    borderRadius: 6,
+    borderWidth: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: 20,
+    marginRight: 18,
   },
   cardTitle: {
     flex: 1,
     fontSize: 20,
-    fontWeight: '600',
+    fontWeight: '800',
+    letterSpacing: -0.2,
     color: Colors.textPrimary,
-  },
-  chevron: {
-    marginLeft: 8,
   },
 });

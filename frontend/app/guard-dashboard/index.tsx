@@ -23,6 +23,8 @@ import GlassTextInput from '../../components/GlassInput';
 import SearchBar from '../../components/SearchBar';
 import AppHeader from '../../components/AppHeader';
 import AnimatedCard, { STACK_CARD_HEIGHT } from '../../components/AnimatedCard';
+import StatusStamp from '../../components/StatusStamp';
+import TrackingTag from '../../components/TrackingTag';
 import { extractErrorMessage } from '../../utils/errorMessage';
 import { formatDateInIST } from '../../utils/dateTime';
 import { useAnimatedList } from '../../utils/useAnimatedList';
@@ -51,12 +53,9 @@ export default function GuardDashboardIndex() {
   const [addModalVisible, setAddModalVisible] = useState(false);
   const [assignModalVisible, setAssignModalVisible] = useState(false);
   const [editModalVisible, setEditModalVisible] = useState(false);
-  const [otpModalVisible, setOtpModalVisible] = useState(false);
   const [qrModalVisible, setQrModalVisible] = useState(false);
   const [qrString, setQrString] = useState('');
   const [selectedParcel, setSelectedParcel] = useState<Parcel | null>(null);
-  const [enteredOTP, setEnteredOTP] = useState('');
-  const [errorMessage, setErrorMessage] = useState('');
 
   const {
     activeIndex,
@@ -248,32 +247,6 @@ export default function GuardDashboardIndex() {
     }
   };
 
-  const handleVerifyOTP = async () => {
-    if (errorMessage) {
-      setErrorMessage('');
-    }
-    if (!enteredOTP.trim()) {
-      setErrorMessage('Please enter OTP');
-      return;
-    }
-
-    try {
-      await api.post('/parcel/verify-otp', {
-        parcel_id: selectedParcel?._id,
-        otp_code: enteredOTP.trim(),
-      });
-
-      Alert.alert('Success', 'Parcel delivered successfully');
-      setOtpModalVisible(false);
-      setSelectedParcel(null);
-      setEnteredOTP('');
-      fetchParcels();
-    } catch (error: any) {
-      const msg = extractErrorMessage(error, 'Invalid OTP. Try again.');
-      setErrorMessage(msg);
-    }
-  };
-
   const handleLogout = async () => {
     Alert.alert('Logout', 'Are you sure you want to logout?', [
       { text: 'Cancel', style: 'cancel' },
@@ -298,17 +271,11 @@ export default function GuardDashboardIndex() {
           <View style={styles.parcelHeader}>
             <View style={{ flex: 1 }}>
               {item.display_id ? (
-                <View style={{ backgroundColor: Colors.surface, borderWidth: 1, borderColor: Colors.surfaceBorder, alignSelf: 'flex-start', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4, marginBottom: 4 }}>
-                  <Text style={{ fontSize: 11, fontWeight: '600', color: Colors.textSecondary, letterSpacing: 0.5 }}>{item.display_id}</Text>
-                </View>
+                <TrackingTag code={item.display_id} style={{ marginBottom: 8 }} />
               ) : null}
               <View style={styles.parcelInfo}>
                 <Text style={styles.roomNumber}>Room {item.room_number}</Text>
-                <View style={[styles.statusBadge, isPending ? styles.pendingBadge : styles.unassignedBadge]}>
-                  <Text style={[styles.statusText, isPending ? styles.pendingText : styles.unassignedText]}>
-                    {item.status}
-                  </Text>
-                </View>
+                <StatusStamp status={item.status} small />
               </View>
             </View>
             <Text style={styles.date}>
@@ -642,65 +609,6 @@ export default function GuardDashboardIndex() {
             </View>
           </View>
         </KeyboardAvoidingView>
-      </Modal>
-
-      {/* OTP Verification Modal */}
-      <Modal
-        visible={otpModalVisible}
-        animationType="slide"
-        transparent
-        onRequestClose={() => {
-          setOtpModalVisible(false);
-          setEnteredOTP('');
-          setErrorMessage('');
-        }}
-      >
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Verify OTP</Text>
-              <TouchableOpacity
-                onPress={() => {
-                  setOtpModalVisible(false);
-                  setEnteredOTP('');
-                  setErrorMessage('');
-                }}
-              >
-                <Ionicons name="close" size={24} color="#D1D5DB" />
-              </TouchableOpacity>
-            </View>
-
-            <View style={styles.modalForm}>
-              <Text style={styles.otpInfo}>
-                OTP has been sent to student&apos;s email. Ask student to provide the OTP.
-              </Text>
-
-              <View style={styles.inputGroup}>
-                <GlassTextInput
-                  label="Enter OTP"
-                  inputType="numeric"
-                  placeholder="6-digit OTP"
-                  value={enteredOTP}
-                  onChangeText={setEnteredOTP}
-                  maxLength={6}
-                  containerStyle={styles.inputContainer}
-                  labelStyle={styles.inputLabel}
-                />
-              </View>
-
-              {errorMessage ? (
-                <View style={styles.inlineError}>
-                  <Ionicons name="alert-circle" size={16} color={Colors.accentRed} />
-                  <Text style={styles.inlineErrorText}>{errorMessage}</Text>
-                </View>
-              ) : null}
-
-              <TouchableOpacity style={styles.submitButton} onPress={handleVerifyOTP}>
-                <Text style={styles.submitButtonText}>Verify & Deliver</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
       </Modal>
 
       {/* QR Code Modal */}

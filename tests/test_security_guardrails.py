@@ -92,7 +92,10 @@ def test_parse_object_id_rejects_invalid_values():
 
 def test_assign_parcel_returns_404_when_parcel_missing():
     server = load_server_module()
-    server.db = SimpleNamespace(
+    # assign_parcel resolves ``db`` from the parcels router module after the
+    # backend was modularized, so the stub must target that module (otherwise it
+    # falls through to a real Mongo connection, which fails in CI with no DB).
+    server.parcel_routes.db = SimpleNamespace(
         parcels=SimpleNamespace(
             find_one=AsyncMock(return_value=None),
             update_one=AsyncMock(),
@@ -126,7 +129,9 @@ def test_guard_cannot_send_otp_for_other_hostel_parcel():
         "role": server.UserRole.GUARD,
         "hostel_type": server.HostelType.BOYS,
     }
-    server.db = SimpleNamespace(
+    # The parcel handlers resolve ``db`` from their own module namespace after
+    # the backend was modularized, so the stub must target that module.
+    server.parcel_routes.db = SimpleNamespace(
         parcels=SimpleNamespace(
             find_one=AsyncMock(
                 return_value={
@@ -152,7 +157,7 @@ def test_student_cannot_query_another_hostels_parcels():
         "role": server.UserRole.STUDENT,
         "hostel_type": server.HostelType.BOYS,
     }
-    server.db = SimpleNamespace(parcels=SimpleNamespace(find=AsyncMock()))
+    server.parcel_routes.db = SimpleNamespace(parcels=SimpleNamespace(find=AsyncMock()))
 
     with pytest.raises(HTTPException) as exc_info:
         asyncio.run(server.get_hostel_parcels(server.HostelType.GIRLS, None, current_user))
@@ -168,7 +173,8 @@ def test_guard_cannot_fetch_student_from_other_hostel():
         "role": server.UserRole.GUARD,
         "hostel_type": server.HostelType.BOYS,
     }
-    server.db = SimpleNamespace(
+    # get_student_details lives in the parcels router module post-modularization.
+    server.parcel_routes.db = SimpleNamespace(
         users=SimpleNamespace(
             find_one=AsyncMock(
                 return_value={

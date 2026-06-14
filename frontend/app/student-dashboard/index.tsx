@@ -23,6 +23,8 @@ import GlassInput from '../../components/GlassInput';
 import SearchBar from '../../components/SearchBar';
 import AppHeader from '../../components/AppHeader';
 import AnimatedCard, { STACK_CARD_HEIGHT } from '../../components/AnimatedCard';
+import StatusStamp from '../../components/StatusStamp';
+import TrackingTag from '../../components/TrackingTag';
 import { formatDateInIST } from '../../utils/dateTime';
 import { useAnimatedList } from '../../utils/useAnimatedList';
 
@@ -239,6 +241,23 @@ export default function StudentDashboardIndex() {
 
   const handleBarcodeScanned = async ({ data }: { data: string }) => {
     if (processingScan) return;
+
+    // In delegated pickup the friend's 6-character PIN is required. The camera
+    // auto-fires on the first QR it sees, so guard against scanning before the
+    // PIN is entered — otherwise the backend rejects it with a confusing
+    // "belongs to a different student" error.
+    if (showDelegateInput && delegatePin.trim().length !== 6) {
+      setProcessingScan(true);
+      setScanning(false);
+      showAppAlert({
+        title: 'PIN Required',
+        message: 'Enter the full 6-character PIN from your friend, then tap "Pickup for a Friend" again to scan.',
+        variant: 'error',
+      });
+      setProcessingScan(false);
+      return;
+    }
+
     setProcessingScan(true);
     setScanning(false);
     try {
@@ -298,23 +317,11 @@ export default function StudentDashboardIndex() {
         <View style={styles.parcelHeader}>
           <View style={{ flex: 1 }}>
             {item.display_id ? (
-              <View style={styles.displayIdBadge}>
-                <Text style={styles.displayIdText}>{item.display_id}</Text>
-              </View>
+              <TrackingTag code={item.display_id} style={styles.trackingTag} />
             ) : null}
             <View style={styles.parcelInfo}>
               <Text style={styles.roomNumber}>Room {item.room_number}</Text>
-              <View style={[
-                styles.statusBadge,
-                item.status === 'UNASSIGNED' && { backgroundColor: Colors.unassignedBg }
-              ]}>
-                <Text style={[
-                  styles.statusText,
-                  item.status === 'UNASSIGNED' && { color: Colors.unassigned }
-                ]}>
-                  {item.status}
-                </Text>
-              </View>
+              <StatusStamp status={item.status} small />
             </View>
           </View>
               <Text style={styles.date}>
@@ -707,6 +714,9 @@ const styles = StyleSheet.create({
     alignItems: 'flex-start',
     marginBottom: 12,
   },
+  trackingTag: {
+    marginBottom: 8,
+  },
   displayIdBadge: {
     backgroundColor: Colors.surface,
     alignSelf: 'flex-start',
@@ -786,12 +796,13 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: 8,
     paddingVertical: 16,
-    borderRadius: 12,
+    borderRadius: 10,
   },
   scanButtonText: {
     color: '#FFFFFF',
-    fontSize: 16,
-    fontWeight: '600',
+    fontSize: 15,
+    fontWeight: '700',
+    letterSpacing: 0.3,
   },
   cameraHeader: {
     flexDirection: 'row',

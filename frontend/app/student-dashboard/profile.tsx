@@ -18,7 +18,7 @@ import api from '../../utils/api';
 import { useAuthStore } from '../../store/authStore';
 import GlassInput from '../../components/GlassInput';
 import AppHeader from '../../components/AppHeader';
-import { Colors, MinimalCard } from '../../utils/theme';
+import { Colors, Fonts, MinimalCard } from '../../utils/theme';
 import ErrorPopup from '../../components/ErrorPopup';
 import { extractErrorCode, extractErrorMessage } from '../../utils/errorMessage';
 import { formatDateInIST } from '../../utils/dateTime';
@@ -746,9 +746,12 @@ const styles = StyleSheet.create({
     marginTop: 4,
   },
   profileRoll: {
-    fontSize: 15,
-    color: Colors.textSecondary,
-    fontWeight: '500',
+    fontFamily: Fonts.mono,
+    fontSize: 14,
+    letterSpacing: 1.5,
+    color: Colors.accent,
+    fontWeight: '700',
+    marginTop: 2,
   },
   // Info card
   infoCard: {
@@ -757,9 +760,12 @@ const styles = StyleSheet.create({
     gap: 16,
   },
   sectionTitle: {
-    fontSize: 16,
+    fontFamily: Fonts.mono,
+    fontSize: 13,
     fontWeight: '700',
-    color: Colors.textPrimary,
+    letterSpacing: 1.5,
+    textTransform: 'uppercase',
+    color: Colors.textSecondary,
     marginBottom: 4,
   },
   roomChangeHint: {
@@ -787,9 +793,12 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   infoLabel: {
-    fontSize: 12,
+    fontFamily: Fonts.mono,
+    fontSize: 10.5,
+    letterSpacing: 1,
+    textTransform: 'uppercase',
     color: Colors.textMuted,
-    fontWeight: '500',
+    fontWeight: '600',
   },
   infoValue: {
     fontSize: 15,
