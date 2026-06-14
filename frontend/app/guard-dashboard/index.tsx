@@ -51,12 +51,9 @@ export default function GuardDashboardIndex() {
   const [addModalVisible, setAddModalVisible] = useState(false);
   const [assignModalVisible, setAssignModalVisible] = useState(false);
   const [editModalVisible, setEditModalVisible] = useState(false);
-  const [otpModalVisible, setOtpModalVisible] = useState(false);
   const [qrModalVisible, setQrModalVisible] = useState(false);
   const [qrString, setQrString] = useState('');
   const [selectedParcel, setSelectedParcel] = useState<Parcel | null>(null);
-  const [enteredOTP, setEnteredOTP] = useState('');
-  const [errorMessage, setErrorMessage] = useState('');
 
   const {
     activeIndex,
@@ -245,32 +242,6 @@ export default function GuardDashboardIndex() {
       fetchParcels();
     } catch (error: any) {
       Alert.alert('Error', extractErrorMessage(error, 'Failed to update parcel'));
-    }
-  };
-
-  const handleVerifyOTP = async () => {
-    if (errorMessage) {
-      setErrorMessage('');
-    }
-    if (!enteredOTP.trim()) {
-      setErrorMessage('Please enter OTP');
-      return;
-    }
-
-    try {
-      await api.post('/parcel/verify-otp', {
-        parcel_id: selectedParcel?._id,
-        otp_code: enteredOTP.trim(),
-      });
-
-      Alert.alert('Success', 'Parcel delivered successfully');
-      setOtpModalVisible(false);
-      setSelectedParcel(null);
-      setEnteredOTP('');
-      fetchParcels();
-    } catch (error: any) {
-      const msg = extractErrorMessage(error, 'Invalid OTP. Try again.');
-      setErrorMessage(msg);
     }
   };
 
@@ -642,65 +613,6 @@ export default function GuardDashboardIndex() {
             </View>
           </View>
         </KeyboardAvoidingView>
-      </Modal>
-
-      {/* OTP Verification Modal */}
-      <Modal
-        visible={otpModalVisible}
-        animationType="slide"
-        transparent
-        onRequestClose={() => {
-          setOtpModalVisible(false);
-          setEnteredOTP('');
-          setErrorMessage('');
-        }}
-      >
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Verify OTP</Text>
-              <TouchableOpacity
-                onPress={() => {
-                  setOtpModalVisible(false);
-                  setEnteredOTP('');
-                  setErrorMessage('');
-                }}
-              >
-                <Ionicons name="close" size={24} color="#D1D5DB" />
-              </TouchableOpacity>
-            </View>
-
-            <View style={styles.modalForm}>
-              <Text style={styles.otpInfo}>
-                OTP has been sent to student&apos;s email. Ask student to provide the OTP.
-              </Text>
-
-              <View style={styles.inputGroup}>
-                <GlassTextInput
-                  label="Enter OTP"
-                  inputType="numeric"
-                  placeholder="6-digit OTP"
-                  value={enteredOTP}
-                  onChangeText={setEnteredOTP}
-                  maxLength={6}
-                  containerStyle={styles.inputContainer}
-                  labelStyle={styles.inputLabel}
-                />
-              </View>
-
-              {errorMessage ? (
-                <View style={styles.inlineError}>
-                  <Ionicons name="alert-circle" size={16} color={Colors.accentRed} />
-                  <Text style={styles.inlineErrorText}>{errorMessage}</Text>
-                </View>
-              ) : null}
-
-              <TouchableOpacity style={styles.submitButton} onPress={handleVerifyOTP}>
-                <Text style={styles.submitButtonText}>Verify & Deliver</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
       </Modal>
 
       {/* QR Code Modal */}
