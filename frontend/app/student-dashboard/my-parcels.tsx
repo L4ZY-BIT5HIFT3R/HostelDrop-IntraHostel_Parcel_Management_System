@@ -16,6 +16,7 @@ import { Colors, MinimalCard } from '../../utils/theme';
 import AppHeader from '../../components/AppHeader';
 import AnimatedCard, { STACK_CARD_SPACING, STACK_FOCUS_OFFSET } from '../../components/AnimatedCard';
 import ParcelTimeline from '../../components/ParcelTimeline';
+import StatusStamp from '../../components/StatusStamp';
 import { useAnimatedList } from '../../utils/useAnimatedList';
 
 interface Parcel {
@@ -120,10 +121,7 @@ export default function MyParcels() {
         <View style={styles.parcelHeader}>
           <View style={styles.parcelInfo}>
             <Text style={styles.roomNumber}>Room {item.room_number}</Text>
-            <View style={styles.deliveredBadge}>
-              <Ionicons name="checkmark-circle" size={16} color={Colors.delivered} />
-              <Text style={styles.deliveredText}>Delivered</Text>
-            </View>
+            <StatusStamp status="DELIVERED" small />
           </View>
           {item.collected_by_delegate && (
             <TouchableOpacity

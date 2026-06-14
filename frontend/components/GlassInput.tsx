@@ -11,7 +11,7 @@ import {
   ViewStyle,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { Colors, MinimalInput } from '../utils/theme';
+import { Colors, Fonts, MinimalInput } from '../utils/theme';
 
 type InputType = 'text' | 'email' | 'numeric' | 'phone' | 'password';
 
@@ -57,6 +57,7 @@ export default function GlassInput({
   ...rest
 }: Props) {
   const [showPassword, setShowPassword] = useState(false);
+  const [focused, setFocused] = useState(false);
   const isPassword = inputType === 'password';
 
   const resolvedAutoCapitalize = autoCapitalize ?? getAutoCapitalize(inputType);
@@ -75,6 +76,7 @@ export default function GlassInput({
         style={[
           styles.inputWrapper,
           inputContainerStyle,
+          focused ? styles.inputWrapperFocused : null,
           error ? styles.inputWrapperError : null,
         ]}
       >
@@ -91,6 +93,14 @@ export default function GlassInput({
           {...rest}
           value={value}
           onChangeText={onChangeText}
+          onFocus={(e) => {
+            setFocused(true);
+            rest.onFocus?.(e);
+          }}
+          onBlur={(e) => {
+            setFocused(false);
+            rest.onBlur?.(e);
+          }}
           style={[styles.input, inputStyle]}
           keyboardType={getKeyboardType(inputType)}
           autoCapitalize={resolvedAutoCapitalize}
@@ -113,9 +123,12 @@ export default function GlassInput({
 
 const styles = StyleSheet.create({
   label: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: Colors.textPrimary,
+    fontFamily: Fonts.mono,
+    fontSize: 11,
+    fontWeight: '700',
+    letterSpacing: 1,
+    textTransform: 'uppercase',
+    color: Colors.textSecondary,
     marginBottom: 8,
   },
   inputWrapper: {
@@ -123,6 +136,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     ...MinimalInput,
     paddingHorizontal: 16,
+  },
+  inputWrapperFocused: {
+    borderColor: Colors.accent,
+    backgroundColor: Colors.surface,
   },
   inputWrapperError: {
     borderColor: Colors.accentRed,

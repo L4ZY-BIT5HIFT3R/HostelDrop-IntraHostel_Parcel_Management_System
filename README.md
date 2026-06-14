@@ -18,14 +18,14 @@
 
 ## Overview
 
-HostelDrop digitizes parcel intake, assignment, notification, pickup, and delivery tracking inside a hostel. Guards can log incoming parcels, assign them to students or rooms, verify pickup with OTP or QR flows, and review delivered parcels. Students can register, sign in, view parcel updates, receive notifications, request room changes, and delegate pickup. Admins can manage users, room transfers, room change requests, and delivered-parcel maintenance.
+HostelDrop digitizes parcel intake, assignment, notification, pickup, and delivery tracking inside a hostel. Guards can log incoming parcels, assign them to students or rooms, verify pickup with short-lived QR tokens, and review delivered parcels. Students can register, sign in, view parcel updates, receive notifications, request room changes, and delegate pickup. Admins can manage users, room transfers, room change requests, and delivered-parcel maintenance.
 
 ## Key Features
 
 - Role-based flows for students, guards, and admins.
 - Student registration with email OTP verification and password-based login.
-- Guard dashboard for parcel intake, assignment, update, search, and delivery tracking.
-- OTP pickup verification for traditional parcel handoff.
+- Password reset via email OTP.
+- Guard dashboard for parcel intake, assignment, update, search, QR pickup, and delivery tracking.
 - Short-lived QR pickup tokens with single-use validation.
 - Delegated pickup support with authenticated receiver tracking.
 - Student dashboards for all hostel parcels, personal parcels, profile, notifications, and room changes.
@@ -51,18 +51,21 @@ HostelDrop digitizes parcel intake, assignment, notification, pickup, and delive
 | Role | Capabilities |
 | --- | --- |
 | Student | Register, log in, view parcels, receive notifications, scan QR pickup, delegate pickup, request room changes |
-| Guard | Add parcels, assign parcels, search parcels, send OTP, generate QR, verify pickup, view delivered parcels |
+| Guard | Add parcels, assign parcels, search parcels, generate QR, verify pickup, view delivered parcels |
 | Admin | Add users, manage students and guards, approve room changes, transfer rooms, inspect room history, clean delivered records |
 
 ## Repository Structure
 
 ```text
 .
-|-- backend/                 # FastAPI server, MongoDB scripts, seed/import utilities
+|-- backend/                 # FastAPI application
+|   |-- server.py            # Entrypoint: middleware, lifespan, router registration
+|   |-- core/                # config, db, models, validators, security, services, domain
+|   `-- routers/             # auth, students, admin, parcels route modules
 |-- frontend/                # Expo Router React Native app
 |-- tests/                   # Pytest backend security and guardrail tests
 |-- stress-tests/            # k6 and Locust stress-test scripts plus result artifacts
-|-- document/                # Project PDF/shell artifacts
+|-- document/                # Project documentation
 |-- logo/                    # README and project logo assets
 |-- populate_display_ids.py  # Utility script for parcel display IDs
 |-- pyrightconfig.json       # Python type-checking configuration
@@ -127,12 +130,8 @@ Backend URLs:
 - API root: `http://localhost:8001/api`
 - Swagger docs: `http://localhost:8001/docs`
 
-Seed local data when needed:
-
-```bash
-python backend/seed_database.py
-python backend/add_sample_parcels.py
-```
+Students self-register from the app, and guards are created by an admin from the
+admin panel, so no database seeding step is required.
 
 ## Run The Frontend
 
@@ -171,8 +170,18 @@ Frontend variables are defined in [`frontend/.env.example`](frontend/.env.exampl
 | Variable | Purpose |
 | --- | --- |
 | `EXPO_PUBLIC_BACKEND_URL` | Backend host used by the mobile app |
+| `EXPO_PUBLIC_FEEDBACK_FORM_URL` | Public Google Form response link opened by the app feedback button |
 
 Never commit real `.env` files or production secrets.
+
+## Feedback Form Setup
+
+The app shows a feedback button on the notice board and role-selection screens. To collect responses privately in your Google account:
+
+1. Create a Google Form with these questions: `Name`, `Roll number (optional)`, `Problem you are facing`, and `Suggestion, if any (optional)`.
+2. Keep the form responses private to your Google account and do not share the edit link.
+3. Copy the public responder link from the form's Send option.
+4. Add it to `frontend/.env` as `EXPO_PUBLIC_FEEDBACK_FORM_URL`.
 
 ## Email Setup
 
@@ -193,7 +202,6 @@ When SMTP is not configured in development, the backend logs OTP activity instea
 
 | Workflow | Summary |
 | --- | --- |
-| OTP pickup | Guard sends an OTP to the assigned student, verifies it at reception, and marks the parcel delivered |
 | QR pickup | Guard generates a short-lived QR token, student scans it from an authenticated app session, and the backend validates ownership before delivery |
 | Delegated pickup | Student delegates pickup to another registered student, and the backend records the delegated receiver after QR validation |
 
@@ -204,7 +212,7 @@ When SMTP is not configured in development, the backend logs OTP activity instea
 | Auth | `/api/auth/guard/login`, `/api/auth/admin/login`, `/api/auth/student/login`, `/api/auth/student/register/*` |
 | Student | `/api/student/room-change-request`, `/api/student/notifications`, `/api/auth/student/profile` |
 | Admin | `/api/admin/users`, `/api/admin/add-user`, `/api/admin/room-change-requests`, `/api/admin/student/room-history` |
-| Parcels | `/api/parcel/add`, `/api/parcel/assign`, `/api/parcel/update`, `/api/parcel/send-otp`, `/api/parcel/verify-otp` |
+| Parcels | `/api/parcel/add`, `/api/parcel/assign`, `/api/parcel/update`, `/api/parcel/hostel/{type}` |
 | QR pickup | `/api/parcel/generate-qr`, `/api/parcel/delegate`, `/api/parcel/verify-qr` |
 
 ## Testing

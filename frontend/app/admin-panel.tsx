@@ -15,7 +15,7 @@ import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import api from '../utils/api';
 import { useAuthStore } from '../store/authStore';
-import { Colors, GlassCard, GlassInput } from '../utils/theme';
+import { Colors, Fonts, GlassCard, GlassInput } from '../utils/theme';
 import GlassTextInput from '../components/GlassInput';
 import AppHeader from '../components/AppHeader';
 import { extractErrorMessage } from '../utils/errorMessage';
@@ -1005,9 +1005,12 @@ const styles = StyleSheet.create({
     marginBottom: 32,
   },
   sectionTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: Colors.textPrimary,
+    fontFamily: Fonts.mono,
+    fontSize: 13,
+    fontWeight: '700',
+    letterSpacing: 1.5,
+    textTransform: 'uppercase',
+    color: Colors.textSecondary,
     marginBottom: 16,
   },
   sectionHint: {
@@ -1139,9 +1142,11 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   summaryCount: {
+    fontFamily: Fonts.mono,
     fontSize: 40,
     fontWeight: '700',
-    color: Colors.textPrimary,
+    letterSpacing: 1,
+    color: Colors.accent,
     textAlign: 'center',
     marginTop: 6,
     marginBottom: 6,
