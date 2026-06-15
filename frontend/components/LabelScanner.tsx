@@ -1,5 +1,5 @@
 import React, { useRef, useState } from 'react';
-import { ActivityIndicator, Platform, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Modal, Platform, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import { Ionicons } from '@expo/vector-icons';
@@ -24,26 +24,6 @@ export default function LabelScanner({ visible, onClose, onScanned }: Props) {
   const [permission, requestPermission] = useCameraPermissions();
   const [processing, setProcessing] = useState(false);
 
-  if (!visible) return null;
-
-  if (!permission?.granted) {
-    return (
-      <View style={[StyleSheet.absoluteFill, styles.permissionScreen]}>
-        <SafeAreaView style={styles.permissionInner}>
-          <Ionicons name="camera-outline" size={56} color={Colors.textMuted} />
-          <Text style={styles.permissionTitle}>Camera access needed</Text>
-          <Text style={styles.permissionText}>Allow the camera to scan parcel labels.</Text>
-          <TouchableOpacity style={styles.permissionButton} onPress={requestPermission}>
-            <Text style={styles.permissionButtonText}>Grant permission</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.permissionGhost} onPress={onClose}>
-            <Text style={styles.permissionGhostText}>Cancel</Text>
-          </TouchableOpacity>
-        </SafeAreaView>
-      </View>
-    );
-  }
-
   const handleCapture = async () => {
     if (processing) return;
     setProcessing(true);
@@ -64,42 +44,63 @@ export default function LabelScanner({ visible, onClose, onScanned }: Props) {
   };
 
   return (
-    <View style={StyleSheet.absoluteFill}>
-      <CameraView ref={cameraRef} style={StyleSheet.absoluteFill} facing="back" />
-
-      <SafeAreaView
-        style={StyleSheet.absoluteFill}
-        {...(Platform.OS !== 'web' ? { pointerEvents: 'box-none' } : {})}
-      >
-        <View style={styles.header} {...(Platform.OS !== 'web' ? { pointerEvents: 'box-none' } : {})}>
-          <TouchableOpacity style={styles.closeButton} onPress={onClose}>
-            <Ionicons name="close" size={28} color="#FFF" />
-          </TouchableOpacity>
+    <Modal visible={visible} animationType="slide" onRequestClose={onClose} statusBarTranslucent>
+      {!permission?.granted ? (
+        <View style={[StyleSheet.absoluteFill, styles.permissionScreen]}>
+          <SafeAreaView style={styles.permissionInner}>
+            <Ionicons name="camera-outline" size={56} color={Colors.textMuted} />
+            <Text style={styles.permissionTitle}>Camera access needed</Text>
+            <Text style={styles.permissionText}>Allow the camera to scan parcel labels.</Text>
+            <TouchableOpacity style={styles.permissionButton} onPress={requestPermission}>
+              <Text style={styles.permissionButtonText}>Grant permission</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.permissionGhost} onPress={onClose}>
+              <Text style={styles.permissionGhostText}>Cancel</Text>
+            </TouchableOpacity>
+          </SafeAreaView>
         </View>
+      ) : (
+        <View style={[StyleSheet.absoluteFill, styles.cameraRoot]}>
+          <CameraView ref={cameraRef} style={StyleSheet.absoluteFill} facing="back" />
 
-        <View style={styles.overlay} {...(Platform.OS !== 'web' ? { pointerEvents: 'box-none' } : {})}>
-          <View style={styles.frame} />
-          <Text style={styles.instruction}>
-            Point at the label&apos;s &quot;Name | Room | Roll&quot; line and tap to scan
-          </Text>
-        </View>
+          <SafeAreaView
+            style={StyleSheet.absoluteFill}
+            {...(Platform.OS !== 'web' ? { pointerEvents: 'box-none' } : {})}
+          >
+            <View style={styles.header} {...(Platform.OS !== 'web' ? { pointerEvents: 'box-none' } : {})}>
+              <TouchableOpacity style={styles.closeButton} onPress={onClose}>
+                <Ionicons name="close" size={28} color="#FFF" />
+              </TouchableOpacity>
+            </View>
 
-        <View style={styles.footer}>
-          <TouchableOpacity style={styles.shutter} onPress={handleCapture} disabled={processing}>
-            {processing ? (
-              <ActivityIndicator color="#FFF" />
-            ) : (
-              <Ionicons name="scan" size={30} color="#FFF" />
-            )}
-          </TouchableOpacity>
-          <Text style={styles.shutterHint}>{processing ? 'Reading…' : 'Scan label'}</Text>
+            <View style={styles.overlay} {...(Platform.OS !== 'web' ? { pointerEvents: 'box-none' } : {})}>
+              <View style={styles.frame} />
+              <Text style={styles.instruction}>
+                Point at the label&apos;s &quot;Name | Room | Roll&quot; line and tap to scan
+              </Text>
+            </View>
+
+            <View style={styles.footer}>
+              <TouchableOpacity style={styles.shutter} onPress={handleCapture} disabled={processing}>
+                {processing ? (
+                  <ActivityIndicator color="#FFF" />
+                ) : (
+                  <Ionicons name="scan" size={30} color="#FFF" />
+                )}
+              </TouchableOpacity>
+              <Text style={styles.shutterHint}>{processing ? 'Reading…' : 'Scan label'}</Text>
+            </View>
+          </SafeAreaView>
         </View>
-      </SafeAreaView>
-    </View>
+      )}
+    </Modal>
   );
 }
 
 const styles = StyleSheet.create({
+  cameraRoot: {
+    backgroundColor: '#000000',
+  },
   header: {
     flexDirection: 'row',
     justifyContent: 'flex-end',
