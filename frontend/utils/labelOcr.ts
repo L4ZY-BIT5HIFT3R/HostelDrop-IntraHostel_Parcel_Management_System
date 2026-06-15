@@ -1,4 +1,12 @@
+import { NativeModules } from 'react-native';
 import type { TextRecognitionResult } from '@react-native-ml-kit/text-recognition';
+
+/**
+ * Whether on-device OCR is usable in the current runtime. The ML Kit native
+ * module only exists in a dev/EAS build — in Expo Go it is absent, so we hide
+ * the camera-scan affordance there and fall back to manual entry.
+ */
+export const isLabelOcrAvailable: boolean = !!NativeModules.TextRecognition;
 
 /**
  * Pick the most likely "Name | Room | Roll" line out of an OCR result.

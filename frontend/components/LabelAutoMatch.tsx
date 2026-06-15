@@ -4,6 +4,7 @@ import { Ionicons } from '@expo/vector-icons';
 import GlassTextInput from './GlassInput';
 import LabelScanner from './LabelScanner';
 import { matchStudent, MatchStudentResponse, StudentMatch } from '../utils/api';
+import { isLabelOcrAvailable } from '../utils/labelOcr';
 import { Colors, Fonts, Radii } from '../utils/theme';
 
 export interface AppliedMatch {
@@ -83,16 +84,20 @@ export default function LabelAutoMatch({ onApply, label = 'Smart fill · Name | 
         leftIconName="sparkles-outline"
       />
 
-      <TouchableOpacity style={styles.scanButton} onPress={() => setScannerVisible(true)} activeOpacity={0.85}>
-        <Ionicons name="camera-outline" size={17} color={Colors.accentBlue} />
-        <Text style={styles.scanButtonText}>Scan label with camera</Text>
-      </TouchableOpacity>
+      {isLabelOcrAvailable ? (
+        <>
+          <TouchableOpacity style={styles.scanButton} onPress={() => setScannerVisible(true)} activeOpacity={0.85}>
+            <Ionicons name="camera-outline" size={17} color={Colors.accentBlue} />
+            <Text style={styles.scanButtonText}>Scan label with camera</Text>
+          </TouchableOpacity>
 
-      <LabelScanner
-        visible={scannerVisible}
-        onClose={() => setScannerVisible(false)}
-        onScanned={(scanned) => setText(scanned)}
-      />
+          <LabelScanner
+            visible={scannerVisible}
+            onClose={() => setScannerVisible(false)}
+            onScanned={(scanned) => setText(scanned)}
+          />
+        </>
+      ) : null}
 
       {loading ? (
         <View style={styles.statusRow}>
