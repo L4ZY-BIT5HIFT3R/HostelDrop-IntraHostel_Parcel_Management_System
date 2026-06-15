@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, StyleProp, StyleSheet, Text, TextStyle, TouchableOpacity, View, ViewStyle } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import GlassTextInput from './GlassInput';
+import LabelScanner from './LabelScanner';
 import { matchStudent, MatchStudentResponse, StudentMatch } from '../utils/api';
 import { Colors, Fonts, Radii } from '../utils/theme';
 
@@ -28,6 +29,7 @@ export default function LabelAutoMatch({ onApply, label = 'Smart fill · Name | 
   const [text, setText] = useState('');
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<MatchStudentResponse | null>(null);
+  const [scannerVisible, setScannerVisible] = useState(false);
   const debounce = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
@@ -81,6 +83,17 @@ export default function LabelAutoMatch({ onApply, label = 'Smart fill · Name | 
         leftIconName="sparkles-outline"
       />
 
+      <TouchableOpacity style={styles.scanButton} onPress={() => setScannerVisible(true)} activeOpacity={0.85}>
+        <Ionicons name="camera-outline" size={17} color={Colors.accentBlue} />
+        <Text style={styles.scanButtonText}>Scan label with camera</Text>
+      </TouchableOpacity>
+
+      <LabelScanner
+        visible={scannerVisible}
+        onClose={() => setScannerVisible(false)}
+        onScanned={(scanned) => setText(scanned)}
+      />
+
       {loading ? (
         <View style={styles.statusRow}>
           <ActivityIndicator size="small" color={Colors.textMuted} />
@@ -132,6 +145,23 @@ export default function LabelAutoMatch({ onApply, label = 'Smart fill · Name | 
 }
 
 const styles = StyleSheet.create({
+  scanButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 7,
+    marginTop: 8,
+    height: 42,
+    borderRadius: Radii.lg,
+    borderWidth: 1,
+    borderColor: Colors.accentBlue,
+    backgroundColor: Colors.accentBlueDim,
+  },
+  scanButtonText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: Colors.accentBlue,
+  },
   statusRow: {
     flexDirection: 'row',
     alignItems: 'center',

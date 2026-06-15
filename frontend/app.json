@@ -40,7 +40,13 @@
           "backgroundColor": "#ECE5D6"
         }
       ],
-      "expo-secure-store"
+      "expo-secure-store",
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "HostelDrop uses the camera to scan parcel labels and QR codes."
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true
