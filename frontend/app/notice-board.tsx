@@ -3,7 +3,7 @@ import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, ScrollView
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
-import { Colors, Fonts } from '../utils/theme';
+import { Colors, Fonts, Radii, Shadows } from '../utils/theme';
 import { useAuthStore } from '../store/authStore';
 import FeedbackButton from '../components/FeedbackButton';
 
@@ -35,26 +35,37 @@ export default function NoticeBoard() {
   };
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={styles.container} edges={['top']}>
       <FeedbackButton style={styles.feedbackButton} />
-      <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
-        <View style={styles.headerBlock}>
-          <View style={styles.badge}>
-            <Ionicons name="reader-outline" size={15} color={Colors.accent} />
-            <Text style={styles.badgeText}>BULLETIN</Text>
+      <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+        {/* Masthead */}
+        <View style={styles.masthead}>
+          <View style={styles.stamp}>
+            <Ionicons name="reader-outline" size={14} color={Colors.accent} />
+            <Text style={styles.stampText}>BULLETIN</Text>
           </View>
           <Text style={styles.title}>Important Guidelines</Text>
           <Text style={styles.subtitle}>Please read before continuing to the app.</Text>
+          <View style={styles.rule} />
         </View>
 
-        <View style={styles.card}>
+        {/* Notice sheet */}
+        <View style={styles.sheet}>
           {NOTICE_POINTS.map((point, index) => (
-            <View key={point} style={styles.noticeRow}>
-              <Text style={styles.noticeNumber}>{index + 1}.</Text>
+            <View
+              key={point}
+              style={[styles.noticeRow, index === NOTICE_POINTS.length - 1 && styles.noticeRowLast]}
+            >
+              <View style={styles.numChip}>
+                <Text style={styles.numText}>{String(index + 1).padStart(2, '0')}</Text>
+              </View>
               <Text style={styles.noticeText}>{point}</Text>
             </View>
           ))}
+        </View>
 
+        {/* Agreement */}
+        <View style={styles.agreementCard}>
           <Text style={styles.finalLine}>
             By continuing, you agree to our{' '}
             <Text style={styles.linkText} onPress={() => router.push('/terms-and-conditions')}>
@@ -74,8 +85,8 @@ export default function NoticeBoard() {
           >
             <Ionicons
               name={hasAcknowledged ? 'checkmark-circle' : 'ellipse-outline'}
-              size={22}
-              color={hasAcknowledged ? Colors.textPrimary : Colors.textMuted}
+              size={24}
+              color={hasAcknowledged ? Colors.accent : Colors.textMuted}
             />
             <Text style={styles.checkboxText}>I have read and understood the notice and policies.</Text>
           </TouchableOpacity>
@@ -106,36 +117,35 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: Colors.bg,
   },
-  scrollContent: {
+  content: {
     flexGrow: 1,
-    paddingHorizontal: 24,
-    paddingTop: 68,
-    paddingBottom: 32,
-    justifyContent: 'center',
+    paddingHorizontal: 22,
+    paddingTop: 56,
+    paddingBottom: 28,
   },
   feedbackButton: {
     position: 'absolute',
     top: 16,
-    right: 24,
+    right: 22,
     zIndex: 10,
   },
-  headerBlock: {
-    marginBottom: 20,
+  masthead: {
+    marginBottom: 18,
   },
-  badge: {
+  stamp: {
     flexDirection: 'row',
     alignItems: 'center',
     alignSelf: 'flex-start',
     gap: 7,
     paddingVertical: 5,
     paddingHorizontal: 10,
-    borderRadius: 4,
+    borderRadius: 3,
     borderWidth: 1.5,
     borderColor: Colors.accent,
-    marginBottom: 16,
+    marginBottom: 14,
     transform: [{ rotate: '-2deg' }],
   },
-  badgeText: {
+  stampText: {
     fontFamily: Fonts.mono,
     fontSize: 12,
     color: Colors.accent,
@@ -143,56 +153,93 @@ const styles = StyleSheet.create({
     letterSpacing: 2,
   },
   title: {
-    fontSize: 30,
+    fontSize: 28,
     fontWeight: '800',
-    letterSpacing: -0.4,
+    letterSpacing: -0.5,
     color: Colors.textPrimary,
-    marginBottom: 8,
+    marginBottom: 6,
   },
   subtitle: {
-    fontSize: 15,
+    fontSize: 14,
     color: Colors.textSecondary,
-    lineHeight: 22,
+    lineHeight: 20,
   },
-  card: {
+  rule: {
+    height: 2,
+    width: 40,
+    borderRadius: 1,
+    backgroundColor: Colors.accent,
+    marginTop: 12,
+  },
+  sheet: {
     backgroundColor: Colors.surface,
     borderWidth: 1,
     borderColor: Colors.surfaceBorder,
-    borderRadius: 10,
-    padding: 20,
-    marginBottom: 18,
+    borderRadius: Radii.lg,
+    padding: 16,
+    marginBottom: 14,
+    ...Shadows.subtle,
   },
   noticeRow: {
     flexDirection: 'row',
     alignItems: 'flex-start',
-    marginBottom: 12,
+    gap: 11,
+    marginBottom: 14,
   },
-  noticeNumber: {
-    width: 26,
+  noticeRowLast: {
+    marginBottom: 0,
+  },
+  numChip: {
+    minWidth: 28,
+    height: 24,
+    paddingHorizontal: 5,
+    borderRadius: Radii.sm,
+    backgroundColor: Colors.accentDim,
+    borderWidth: 1,
+    borderColor: 'rgba(210, 63, 28, 0.25)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 1,
+  },
+  numText: {
     fontFamily: Fonts.mono,
-    fontSize: 14,
+    fontSize: 12,
+    fontWeight: '800',
     color: Colors.accent,
-    fontWeight: '700',
-    paddingTop: 2,
   },
   noticeText: {
     flex: 1,
-    fontSize: 15,
-    lineHeight: 22,
+    fontSize: 14,
+    lineHeight: 21,
     color: Colors.textSecondary,
   },
+  agreementCard: {
+    backgroundColor: Colors.surface,
+    borderWidth: 1,
+    borderColor: Colors.surfaceBorder,
+    borderLeftWidth: 4,
+    borderLeftColor: Colors.accent,
+    borderRadius: Radii.lg,
+    padding: 16,
+    marginBottom: 16,
+    ...Shadows.subtle,
+  },
   finalLine: {
-    marginTop: 10,
     fontSize: 14,
     lineHeight: 22,
     color: Colors.textSecondary,
+  },
+  linkText: {
+    color: Colors.textPrimary,
+    fontWeight: '700',
+    textDecorationLine: 'underline',
   },
   checkboxRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
     marginTop: 14,
-    paddingTop: 12,
+    paddingTop: 14,
     borderTopWidth: 1,
     borderTopColor: Colors.surfaceBorder,
   },
@@ -202,19 +249,15 @@ const styles = StyleSheet.create({
     color: Colors.textSecondary,
     lineHeight: 20,
   },
-  linkText: {
-    color: Colors.textPrimary,
-    fontWeight: '700',
-    textDecorationLine: 'underline',
-  },
   continueButton: {
     height: 54,
-    borderRadius: 10,
+    borderRadius: Radii.lg,
     backgroundColor: Colors.accent,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 8,
+    ...Shadows.button,
   },
   continueText: {
     color: '#FFFFFF',
@@ -223,6 +266,6 @@ const styles = StyleSheet.create({
     letterSpacing: 0.3,
   },
   disabledButton: {
-    opacity: 0.65,
+    opacity: 0.55,
   },
 });

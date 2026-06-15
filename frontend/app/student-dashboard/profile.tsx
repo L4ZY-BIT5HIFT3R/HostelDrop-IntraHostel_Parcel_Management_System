@@ -330,6 +330,7 @@ export default function Profile() {
         <AppHeader
           title="My Profile"
           subtitle={`${profile?.hostel_type === 'BOYS' ? 'Boys' : 'Girls'} Hostel`}
+          showBrand
           containerStyle={styles.header}
           titleStyle={styles.headerTitle}
           subtitleStyle={styles.headerSubtitle}
@@ -351,11 +352,20 @@ export default function Profile() {
         >
           {/* Avatar & Name */}
           <View style={styles.avatarSection}>
-            <View style={styles.avatar}>
-              <Ionicons name="person" size={48} color={Colors.textPrimary} />
+            <View style={styles.avatarRing}>
+              <View style={styles.avatar}>
+                <Ionicons name="person" size={44} color={Colors.accent} />
+              </View>
             </View>
             <Text style={styles.profileName}>{profile?.name || user?.name || 'Student'}</Text>
             <Text style={styles.profileRoll}>{profile?.roll_number || user?.roll_number || ''}</Text>
+            <View style={styles.hostelChip}>
+              <Ionicons name="business-outline" size={13} color={Colors.textSecondary} />
+              <Text style={styles.hostelChipText}>
+                {profile?.hostel_type === 'BOYS' ? 'Boys Hostel' : 'Girls Hostel'}
+                {profile?.room_number ? `  ·  Room ${profile.room_number}` : ''}
+              </Text>
+            </View>
           </View>
 
           {/* Profile Info Card */}
@@ -729,15 +739,43 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 8,
   },
+  avatarRing: {
+    width: 104,
+    height: 104,
+    borderRadius: 52,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 2,
+    borderColor: Colors.accent,
+    borderStyle: 'dashed',
+    padding: 4,
+  },
   avatar: {
-    width: 96,
-    height: 96,
-    borderRadius: 48,
-    backgroundColor: Colors.surface,
+    width: 88,
+    height: 88,
+    borderRadius: 44,
+    backgroundColor: Colors.accentDim,
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1,
     borderColor: Colors.surfaceBorder,
+  },
+  hostelChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginTop: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 999,
+    backgroundColor: Colors.surface,
+    borderWidth: 1,
+    borderColor: Colors.surfaceBorder,
+  },
+  hostelChipText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: Colors.textSecondary,
   },
   profileName: {
     fontSize: 22,

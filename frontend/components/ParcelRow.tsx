@@ -1,8 +1,9 @@
 import React from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { Colors, Fonts } from '../utils/theme';
+import { Colors, Fonts, Radii, Shadows } from '../utils/theme';
 import StatusStamp from './StatusStamp';
+import PressableScale from './PressableScale';
 
 export type ParcelRowData = {
   _id: string;
@@ -18,30 +19,54 @@ type Props = {
   onPress: () => void;
 };
 
+const STATUS_INK: Record<string, string> = {
+  PENDING: Colors.pending,
+  UNASSIGNED: Colors.unassigned,
+  DELIVERED: Colors.delivered,
+};
+
 /**
- * Compact manila-tag list row: tracking code, room + recipient, and a status
- * stamp. Tapping opens the full detail sheet.
+ * A manila luggage-tag row: a punched eyelet on the perforated left edge, a
+ * monospace tracking code with a tiny barcode, room + recipient, and a canted
+ * rubber-stamp status. The whole tag gives a tactile press.
  */
 export default function ParcelRow({ parcel, onPress }: Props) {
   const recipient = parcel.student_name
     ? `${parcel.student_name}${parcel.roll_number ? ` · ${parcel.roll_number}` : ''}`
     : 'Unassigned';
+  const ink = STATUS_INK[(parcel.status || '').toUpperCase()] ?? Colors.accent;
 
   return (
-    <Pressable
-      onPress={onPress}
-      style={({ pressed }) => [styles.row, pressed && styles.rowPressed]}
-    >
-      <View style={styles.left}>
-        <Text style={styles.code}>{parcel.display_id || 'P—————'}</Text>
+    <PressableScale onPress={onPress} haptic style={styles.row}>
+      {/* Perforated eyelet edge */}
+      <View style={styles.eyelet}>
+        <View style={[styles.punch, { borderColor: ink }]} />
+      </View>
+
+      <View style={[styles.stripe, { backgroundColor: ink }]} />
+
+      <View style={styles.body}>
+        <View style={styles.codeRow}>
+          <View style={styles.bars}>
+            <View style={[styles.bar, { width: 2, backgroundColor: ink }]} />
+            <View style={[styles.bar, { width: 1 }]} />
+            <View style={[styles.bar, { width: 2.5, backgroundColor: ink }]} />
+            <View style={[styles.bar, { width: 1 }]} />
+            <View style={[styles.bar, { width: 1.5, backgroundColor: ink }]} />
+          </View>
+          <Text style={styles.code}>{parcel.display_id || 'P—————'}</Text>
+        </View>
         <Text style={styles.room} numberOfLines={1}>
           Room {parcel.room_number}
-          <Text style={styles.recipient}>  ·  {recipient}</Text>
+          <Text style={styles.recipient}>{'   ·   ' + recipient}</Text>
         </Text>
       </View>
-      <StatusStamp status={parcel.status} small />
-      <Ionicons name="chevron-forward" size={18} color={Colors.textMuted} style={styles.chevron} />
-    </Pressable>
+
+      <View style={styles.right}>
+        <StatusStamp status={parcel.status} small style={styles.stampAlign} />
+        <Ionicons name="chevron-forward" size={16} color={Colors.textMuted} />
+      </View>
+    </PressableScale>
   );
 }
 
@@ -49,22 +74,54 @@ const styles = StyleSheet.create({
   row: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
     backgroundColor: Colors.surface,
     borderWidth: 1,
     borderColor: Colors.surfaceBorder,
-    borderRadius: 10,
-    borderLeftWidth: 4,
-    borderLeftColor: Colors.accent,
-    paddingVertical: 14,
-    paddingHorizontal: 16,
+    borderRadius: Radii.lg,
+    overflow: 'hidden',
+    ...Shadows.subtle,
   },
-  rowPressed: {
+  eyelet: {
+    width: 22,
+    alignSelf: 'stretch',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRightWidth: 1,
+    borderRightColor: Colors.surfaceBorder,
+    borderStyle: 'dashed',
     backgroundColor: Colors.surfaceHover,
   },
-  left: {
+  punch: {
+    width: 9,
+    height: 9,
+    borderRadius: 5,
+    borderWidth: 1.5,
+    backgroundColor: Colors.bg,
+  },
+  stripe: {
+    width: 3,
+    alignSelf: 'stretch',
+  },
+  body: {
     flex: 1,
-    gap: 3,
+    gap: 4,
+    paddingVertical: 13,
+    paddingHorizontal: 13,
+  },
+  codeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 7,
+  },
+  bars: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 1.5,
+    height: 11,
+  },
+  bar: {
+    height: '100%',
+    backgroundColor: Colors.textMuted,
   },
   code: {
     fontFamily: Fonts.mono,
@@ -82,7 +139,13 @@ const styles = StyleSheet.create({
     fontWeight: '400',
     color: Colors.textMuted,
   },
-  chevron: {
-    marginLeft: -4,
+  right: {
+    alignItems: 'flex-end',
+    gap: 8,
+    paddingRight: 12,
+    paddingLeft: 4,
+  },
+  stampAlign: {
+    alignSelf: 'flex-end',
   },
 });

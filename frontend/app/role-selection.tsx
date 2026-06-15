@@ -6,6 +6,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Colors, Fonts } from '../utils/theme';
 import AnimatedCard from '../components/AnimatedCard';
 import FeedbackButton from '../components/FeedbackButton';
+import RoleMotif from '../components/RoleMotif';
 
 type RoleKey = 'GUARD' | 'STUDENT' | 'ADMIN';
 
@@ -14,7 +15,6 @@ const ROLES: {
   code: string;
   title: string;
   description: string;
-  icon: keyof typeof Ionicons.glyphMap;
   ink: string;
   inkBg: string;
 }[] = [
@@ -22,8 +22,7 @@ const ROLES: {
     key: 'GUARD',
     code: 'DESK-01',
     title: 'Guard',
-    description: 'Log, assign & hand over parcels',
-    icon: 'shield-checkmark',
+    description: 'Log & hand over parcels',
     ink: Colors.accentBlue,
     inkBg: Colors.accentBlueDim,
   },
@@ -31,8 +30,7 @@ const ROLES: {
     key: 'STUDENT',
     code: 'RES-02',
     title: 'Student',
-    description: 'Track & collect your parcels',
-    icon: 'cube',
+    description: 'Track & collect parcels',
     ink: Colors.accent,
     inkBg: Colors.accentDim,
   },
@@ -40,8 +38,7 @@ const ROLES: {
     key: 'ADMIN',
     code: 'ADM-03',
     title: 'Admin',
-    description: 'Manage users, rooms & records',
-    icon: 'briefcase',
+    description: 'Manage users & records',
     ink: Colors.accentRed,
     inkBg: Colors.accentRedDim,
   },
@@ -102,21 +99,18 @@ export default function RoleSelection() {
                 </View>
 
                 <View style={styles.tagBody}>
-                  <View style={[styles.iconTile, { backgroundColor: role.inkBg, borderColor: role.ink }]}>
-                    <Ionicons name={role.icon} size={24} color={role.ink} />
+                  <View style={styles.iconTile}>
+                    <RoleMotif role={role.key} ink={role.ink} />
                   </View>
                   <View style={styles.tagContent}>
                     <Text style={styles.tagTitle}>{role.title}</Text>
-                    <Text style={styles.tagDesc}>{role.description}</Text>
+                    <Text style={styles.tagDesc} numberOfLines={1}>
+                      {role.description}
+                    </Text>
                   </View>
-                </View>
-
-                {/* perforation */}
-                <View style={styles.perforation} />
-
-                <View style={styles.tagFooter}>
-                  <Text style={[styles.tagAction, { color: role.ink }]}>ENTER</Text>
-                  <Ionicons name="arrow-forward" size={16} color={role.ink} />
+                  <View style={styles.enter}>
+                    <Ionicons name="arrow-forward" size={18} color={role.ink} />
+                  </View>
                 </View>
               </TouchableOpacity>
             </AnimatedCard>
@@ -142,10 +136,13 @@ const styles = StyleSheet.create({
   content: {
     flexGrow: 1,
     paddingHorizontal: 26,
-    paddingTop: 44,
-    paddingBottom: 24,
+    paddingTop: 26,
+    paddingBottom: 16,
   },
-  main: {},
+  main: {
+    flex: 1,
+    justifyContent: 'center',
+  },
   feedbackButton: {
     position: 'absolute',
     top: 16,
@@ -154,13 +151,12 @@ const styles = StyleSheet.create({
   },
   header: {
     alignItems: 'center',
-    marginBottom: 30,
+    marginBottom: 14,
   },
   footer: {
-    marginTop: 'auto',
-    paddingTop: 24,
+    paddingTop: 18,
     alignItems: 'center',
-    gap: 5,
+    gap: 3,
   },
   footerRule: {
     width: 44,
@@ -187,7 +183,7 @@ const styles = StyleSheet.create({
     borderRadius: 3,
     paddingHorizontal: 12,
     paddingVertical: 5,
-    marginBottom: 16,
+    marginBottom: 10,
     transform: [{ rotate: '-3deg' }],
     opacity: 0.9,
   },
@@ -203,7 +199,7 @@ const styles = StyleSheet.create({
     alignItems: 'flex-end',
   },
   wordmark: {
-    fontSize: 38,
+    fontSize: 30,
     fontWeight: '800',
     letterSpacing: -1,
     color: Colors.textPrimary,
@@ -221,13 +217,13 @@ const styles = StyleSheet.create({
     fontSize: 11,
     letterSpacing: 1.5,
     color: Colors.textSecondary,
-    marginTop: 8,
+    marginTop: 6,
   },
   ruleRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
-    marginTop: 16,
+    marginTop: 10,
     width: '60%',
   },
   rule: {
@@ -240,20 +236,20 @@ const styles = StyleSheet.create({
     fontSize: 12,
     letterSpacing: 1.5,
     color: Colors.textMuted,
-    marginBottom: 14,
+    marginBottom: 10,
     marginLeft: 2,
   },
   cardContainer: {
-    gap: 14,
+    gap: 11,
   },
   tag: {
     backgroundColor: Colors.surface,
     borderWidth: 1,
     borderColor: Colors.surfaceBorder,
     borderRadius: 10,
-    paddingHorizontal: 18,
-    paddingTop: 12,
-    paddingBottom: 14,
+    paddingHorizontal: 16,
+    paddingTop: 9,
+    paddingBottom: 11,
     shadowColor: '#3B3122',
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.12,
@@ -264,12 +260,12 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: 8,
+    marginBottom: 4,
   },
   hole: {
-    width: 14,
-    height: 14,
-    borderRadius: 7,
+    width: 12,
+    height: 12,
+    borderRadius: 6,
     backgroundColor: Colors.bg,
     borderWidth: 1,
     borderColor: Colors.surfaceBorder,
@@ -285,44 +281,29 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   iconTile: {
-    width: 50,
-    height: 50,
-    borderRadius: 6,
-    borderWidth: 1,
+    width: 54,
+    height: 54,
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: 16,
+    marginRight: 12,
   },
   tagContent: {
     flex: 1,
   },
   tagTitle: {
-    fontSize: 21,
+    fontSize: 18,
     fontWeight: '800',
     letterSpacing: -0.3,
     color: Colors.textPrimary,
-    marginBottom: 2,
+    marginBottom: 1,
   },
   tagDesc: {
     fontSize: 13,
     color: Colors.textSecondary,
   },
-  perforation: {
-    borderBottomWidth: 1,
-    borderStyle: 'dashed',
-    borderColor: Colors.surfaceBorder,
-    marginVertical: 12,
-  },
-  tagFooter: {
-    flexDirection: 'row',
+  enter: {
     alignItems: 'center',
-    justifyContent: 'flex-end',
-    gap: 7,
-  },
-  tagAction: {
-    fontFamily: Fonts.mono,
-    fontSize: 12,
-    fontWeight: '700',
-    letterSpacing: 2,
+    justifyContent: 'center',
+    marginLeft: 8,
   },
 });

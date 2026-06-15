@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   View,
   Text,
@@ -25,6 +25,7 @@ import SearchBar from '../../components/SearchBar';
 import AppHeader from '../../components/AppHeader';
 import ParcelRow from '../../components/ParcelRow';
 import ParcelDetailSheet from '../../components/ParcelDetailSheet';
+import PressableScale from '../../components/PressableScale';
 import { formatDateInIST } from '../../utils/dateTime';
 
 interface Parcel {
@@ -70,7 +71,6 @@ export default function StudentDashboardIndex() {
   const router = useRouter();
   const { user, logout } = useAuthStore();
   const [parcels, setParcels] = useState<Parcel[]>([]);
-  const [filteredParcels, setFilteredParcels] = useState<Parcel[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [refreshing, setRefreshing] = useState(false);
   const [detailParcel, setDetailParcel] = useState<Parcel | null>(null);
@@ -139,7 +139,6 @@ export default function StudentDashboardIndex() {
         (p: Parcel) => ['PENDING', 'UNASSIGNED'].includes(p.status)
       );
       setParcels(pendingParcels);
-      setFilteredParcels(pendingParcels);
     } catch {
       showAppAlert({
         title: 'Unable to load parcels',
@@ -177,22 +176,16 @@ export default function StudentDashboardIndex() {
     }
   };
 
-  const handleSearch = (query: string) => {
-    setSearchQuery(query);
-    if (query.trim() === '') {
-      setFilteredParcels(parcels);
-    } else {
-      const lowercaseQuery = query.toLowerCase();
-      const filtered = parcels.filter((parcel) => {
-        const idMatch = parcel.display_id?.toLowerCase().includes(lowercaseQuery);
-        const roomMatch = parcel.room_number.toLowerCase().includes(lowercaseQuery);
-        const rollMatch = parcel.roll_number?.toLowerCase().includes(lowercaseQuery);
-        const nameMatch = parcel.student_name?.toLowerCase().includes(lowercaseQuery);
-        return idMatch || roomMatch || rollMatch || nameMatch;
-      });
-      setFilteredParcels(filtered);
-    }
-  };
+  const filteredParcels = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    if (!q) return parcels;
+    return parcels.filter((parcel) =>
+      parcel.display_id?.toLowerCase().includes(q) ||
+      parcel.room_number.toLowerCase().includes(q) ||
+      parcel.roll_number?.toLowerCase().includes(q) ||
+      parcel.student_name?.toLowerCase().includes(q)
+    );
+  }, [parcels, searchQuery]);
 
   const handleStartScan = async () => {
     if (!permission?.granted) {
@@ -307,19 +300,17 @@ export default function StudentDashboardIndex() {
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       <AppHeader
-        title="All Parcels"
-        subtitle={`${user?.hostel_type ?? ''} Hostel`}
+        title="HostelDrop"
+        subtitle={`${user?.hostel_type ?? ''} Hostel · Mailroom`}
+        showBrand
         containerStyle={styles.header}
         titleStyle={styles.headerTitle}
         subtitleStyle={styles.headerSubtitle}
-        onBackPress={async () => {
-          await logout();
-          router.replace('/role-selection');
-        }}
         actions={[
           {
             icon: 'notifications-outline',
             onPress: openNotifications,
+            size: 19,
             buttonStyle: styles.notificationButton,
             accessibilityLabel: 'Open notifications',
           },
@@ -332,22 +323,36 @@ export default function StudentDashboardIndex() {
         ]}
       />
 
-      <View style={{ paddingHorizontal: 24, paddingTop: 16 }}>
-        <TouchableOpacity style={styles.scanButton} onPress={() => { setShowDelegateInput(false); handleStartScan(); }}>
-          <Ionicons name="qr-code-outline" size={24} color="#FFF" />
-          <Text style={styles.scanButtonText}>Scan to Pickup My Parcel</Text>
-        </TouchableOpacity>
+      <View style={styles.actionRow}>
+        <PressableScale
+          haptic
+          style={[styles.actionCard, styles.actionCardPrimary]}
+          onPress={() => { setShowDelegateInput(false); handleStartScan(); }}
+        >
+          <View style={styles.actionIconPrimary}>
+            <Ionicons name="qr-code-outline" size={22} color={Colors.accent} />
+          </View>
+          <Text style={styles.actionTitlePrimary}>Scan & Pickup</Text>
+          <Text style={styles.actionHintPrimary}>Claim your own parcel</Text>
+        </PressableScale>
 
-        <TouchableOpacity style={[styles.scanButton, { marginTop: 12,borderColor: 'rgba(147, 112, 219, 0.8)',borderWidth: 1 }]} onPress={() => { setShowDelegateInput(true); handleStartScan(); }}>
-          <Ionicons name="people-outline" size={24} color="#FFF" />
-          <Text style={styles.scanButtonText}>Pickup for a Friend</Text>
-        </TouchableOpacity>
+        <PressableScale
+          haptic
+          style={[styles.actionCard, styles.actionCardGhost]}
+          onPress={() => { setShowDelegateInput(true); handleStartScan(); }}
+        >
+          <View style={styles.actionIconGhost}>
+            <Ionicons name="people-outline" size={22} color={Colors.accentTeal} />
+          </View>
+          <Text style={styles.actionTitleGhost}>For a Friend</Text>
+          <Text style={styles.actionHintGhost}>Pickup with their PIN</Text>
+        </PressableScale>
       </View>
 
       <View style={styles.content}>
         <SearchBar
           value={searchQuery}
-          onChangeText={handleSearch}
+          onChangeText={setSearchQuery}
           placeholder="Search by room, roll number, or name..."
           containerStyle={styles.searchContainer}
         />
@@ -635,6 +640,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: Colors.surfaceBorder,
     backgroundColor: Colors.surface,
+    padding: 0,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -643,6 +649,72 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingTop: 4,
     paddingBottom: 16,
+  },
+  actionRow: {
+    flexDirection: 'row',
+    gap: 12,
+    paddingHorizontal: 16,
+    paddingTop: 16,
+    paddingBottom: 4,
+  },
+  actionCard: {
+    flex: 1,
+    borderRadius: 14,
+    borderWidth: 1,
+    padding: 14,
+    gap: 4,
+    minHeight: 104,
+    justifyContent: 'flex-start',
+  },
+  actionCardPrimary: {
+    backgroundColor: Colors.surface,
+    borderColor: Colors.surfaceBorder,
+    borderLeftWidth: 4,
+    borderLeftColor: Colors.accent,
+  },
+  actionCardGhost: {
+    backgroundColor: Colors.surface,
+    borderColor: Colors.surfaceBorder,
+    borderLeftWidth: 4,
+    borderLeftColor: Colors.accentTeal,
+  },
+  actionIconPrimary: {
+    width: 38,
+    height: 38,
+    borderRadius: 11,
+    backgroundColor: Colors.accentDim,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 8,
+  },
+  actionIconGhost: {
+    width: 38,
+    height: 38,
+    borderRadius: 11,
+    backgroundColor: Colors.accentTealDim,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 8,
+  },
+  actionTitlePrimary: {
+    fontSize: 15,
+    fontWeight: '800',
+    color: Colors.accent,
+    letterSpacing: -0.2,
+  },
+  actionTitleGhost: {
+    fontSize: 15,
+    fontWeight: '800',
+    color: Colors.accentTeal,
+    letterSpacing: -0.2,
+  },
+  actionHintPrimary: {
+    fontSize: 12,
+    color: Colors.textSecondary,
+  },
+  actionHintGhost: {
+    fontSize: 12,
+    color: Colors.textSecondary,
   },
   searchContainer: {
     marginBottom: 12,

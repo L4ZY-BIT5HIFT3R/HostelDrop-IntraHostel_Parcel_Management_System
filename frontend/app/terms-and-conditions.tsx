@@ -1,10 +1,6 @@
-import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import { useRouter } from 'expo-router';
-import { Ionicons } from '@expo/vector-icons';
-import { Colors } from '../utils/theme';
+import PolicyDocument, { PolicySection } from '../components/PolicyDocument';
 
-const TERMS_SECTIONS = [
+const TERMS_SECTIONS: PolicySection[] = [
   {
     title: '1. Purpose of the App',
     body: 'This application is intended for hostel parcel intake, tracking, and handover records managed by authorized hostel staff and registered students.',
@@ -40,106 +36,13 @@ const TERMS_SECTIONS = [
 ];
 
 export default function TermsAndConditions() {
-  const router = useRouter();
-
   return (
-    <SafeAreaView style={styles.container}>
-      <View style={styles.header}>
-        <TouchableOpacity style={styles.backButton} onPress={() => router.back()} activeOpacity={0.8}>
-          <Ionicons name="arrow-back" size={20} color={Colors.textPrimary} />
-        </TouchableOpacity>
-        <Text style={styles.title}>Terms and Conditions</Text>
-      </View>
-
-      <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-        <View style={styles.introCard}>
-          <Text style={styles.introText}>
-            Please read these terms carefully before using the hostel parcel management system.
-          </Text>
-        </View>
-
-        {TERMS_SECTIONS.map((section) => (
-          <View key={section.title} style={styles.sectionCard}>
-            <Text style={styles.sectionTitle}>{section.title}</Text>
-            <Text style={styles.sectionBody}>{section.body}</Text>
-          </View>
-        ))}
-
-        <Text style={styles.footerText}>Last updated: April 14, 2026</Text>
-      </ScrollView>
-    </SafeAreaView>
+    <PolicyDocument
+      stamp="TERMS"
+      title="Terms & Conditions"
+      intro="Please read these terms carefully before using the hostel parcel management system."
+      sections={TERMS_SECTIONS}
+      lastUpdated="April 14, 2026"
+    />
   );
 }
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: Colors.bg,
-  },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 20,
-    paddingTop: 6,
-    paddingBottom: 14,
-    gap: 12,
-  },
-  backButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: Colors.surfaceBorder,
-    backgroundColor: Colors.surface,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  title: {
-    fontSize: 24,
-    fontWeight: '700',
-    color: Colors.textPrimary,
-  },
-  content: {
-    paddingHorizontal: 20,
-    paddingBottom: 28,
-  },
-  introCard: {
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: Colors.surfaceBorder,
-    backgroundColor: Colors.surface,
-    padding: 16,
-    marginBottom: 14,
-  },
-  introText: {
-    fontSize: 14,
-    color: Colors.textSecondary,
-    lineHeight: 22,
-  },
-  sectionCard: {
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: Colors.surfaceBorder,
-    backgroundColor: Colors.surface,
-    padding: 16,
-    marginBottom: 12,
-  },
-  sectionTitle: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: Colors.textPrimary,
-    marginBottom: 8,
-  },
-  sectionBody: {
-    fontSize: 14,
-    lineHeight: 22,
-    color: Colors.textSecondary,
-  },
-  footerText: {
-    marginTop: 6,
-    marginBottom: 10,
-    textAlign: 'center',
-    color: Colors.textMuted,
-    fontSize: 12,
-  },
-});

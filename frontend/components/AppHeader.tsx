@@ -10,6 +10,7 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors } from '../utils/theme';
+import Brandmark from './Brandmark';
 
 export type AppHeaderAction = {
   icon: keyof typeof Ionicons.glyphMap;
@@ -26,6 +27,8 @@ type AppHeaderProps = {
   onBackPress?: () => void | Promise<void>;
   backAccessibilityLabel?: string;
   actions?: AppHeaderAction[];
+  /** Show the HostelDrop brandmark tile as a letterhead before the title. */
+  showBrand?: boolean;
   containerStyle?: StyleProp<ViewStyle>;
   titleStyle?: StyleProp<TextStyle>;
   subtitleStyle?: StyleProp<TextStyle>;
@@ -38,11 +41,13 @@ export default function AppHeader({
   onBackPress,
   backAccessibilityLabel = 'Go back',
   actions = [],
+  showBrand = false,
   containerStyle,
   titleStyle,
   subtitleStyle,
   titleContainerStyle,
 }: AppHeaderProps) {
+  const hasLeading = !!onBackPress || showBrand;
   return (
     <View style={[styles.container, containerStyle]}>
       {onBackPress ? (
@@ -56,11 +61,15 @@ export default function AppHeader({
         >
           <Ionicons name="arrow-back" size={22} color={Colors.textPrimary} />
         </TouchableOpacity>
+      ) : showBrand ? (
+        <View style={styles.brandTile}>
+          <Brandmark size={40} rounded={11} />
+        </View>
       ) : null}
 
-      <View style={[styles.titleContainer, onBackPress ? styles.titleContainerWithBack : null, titleContainerStyle]}>
-        <Text style={[styles.title, titleStyle]}>{title}</Text>
-        {subtitle ? <Text style={[styles.subtitle, subtitleStyle]}>{subtitle}</Text> : null}
+      <View style={[styles.titleContainer, hasLeading ? styles.titleContainerWithBack : null, titleContainerStyle]}>
+        <Text style={[styles.title, titleStyle]} numberOfLines={1}>{title}</Text>
+        {subtitle ? <Text style={[styles.subtitle, subtitleStyle]} numberOfLines={1}>{subtitle}</Text> : null}
       </View>
 
       {actions.length ? (
@@ -106,6 +115,12 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: Colors.surfaceBorder,
     backgroundColor: Colors.surface,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  brandTile: {
+    width: 40,
+    height: 40,
     alignItems: 'center',
     justifyContent: 'center',
   },

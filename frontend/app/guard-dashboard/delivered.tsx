@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   View,
   Text,
@@ -7,23 +7,46 @@ import {
   TouchableOpacity,
   Modal,
   ActivityIndicator,
-  Platform,
-  Animated,
+  FlatList,
+  Pressable,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useIsFocused } from '@react-navigation/native';
 import api from '../../utils/api';
-import { Colors, Fonts, GlassCard } from '../../utils/theme';
+import { Colors, Fonts, Radii } from '../../utils/theme';
 import SearchBar from '../../components/SearchBar';
-import AnimatedCard, { STACK_CARD_SPACING, STACK_FOCUS_OFFSET } from '../../components/AnimatedCard';
-import ParcelTimeline from '../../components/ParcelTimeline';
-import StatusStamp from '../../components/StatusStamp';
+import ParcelRow from '../../components/ParcelRow';
+import ParcelDetailSheet from '../../components/ParcelDetailSheet';
 import { extractErrorMessage } from '../../utils/errorMessage';
-import { useAnimatedList } from '../../utils/useAnimatedList';
+
+function Field({
+  icon,
+  label,
+  value,
+  half,
+}: {
+  icon: keyof typeof Ionicons.glyphMap;
+  label: string;
+  value?: string;
+  half?: boolean;
+}) {
+  return (
+    <View style={[styles.field, half && styles.fieldHalf]}>
+      <View style={styles.fieldIcon}>
+        <Ionicons name={icon} size={15} color={Colors.accent} />
+      </View>
+      <View style={styles.fieldText}>
+        <Text style={styles.fieldLabel}>{label}</Text>
+        <Text style={styles.fieldValue} numberOfLines={1}>{value || '—'}</Text>
+      </View>
+    </View>
+  );
+}
 
 interface Parcel {
   _id: string;
+  display_id?: string;
   hostel_type: string;
   room_number: string;
   status: string;
@@ -58,35 +81,17 @@ interface StudentDetails {
   contact_number?: string;
 }
 
-const DELIVERED_STACK_CARD_HEIGHT = 270;
-
 export default function DeliveredParcels() {
   const [parcels, setParcels] = useState<Parcel[]>([]);
-  const [filteredParcels, setFilteredParcels] = useState<Parcel[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [refreshing, setRefreshing] = useState(false);
+  const [detailParcel, setDetailParcel] = useState<Parcel | null>(null);
   const [studentModalVisible, setStudentModalVisible] = useState(false);
   const [selectedStudent, setSelectedStudent] = useState<StudentDetails | null>(null);
   const [studentModalTitle, setStudentModalTitle] = useState('Student Details');
   const [loadingStudent, setLoadingStudent] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
   const isFocused = useIsFocused();
-
-  const {
-    activeIndex,
-    scrollY,
-    cardStep,
-    contentContainerStyle,
-    onLayout,
-    onScroll,
-    onScrollEndDrag,
-    onMomentumScrollEnd,
-  } = useAnimatedList({
-    itemCount: filteredParcels.length,
-    cardHeight: DELIVERED_STACK_CARD_HEIGHT,
-    cardSpacing: STACK_CARD_SPACING,
-    focusOffset: STACK_FOCUS_OFFSET,
-  });
 
   useEffect(() => {
     fetchParcels();
@@ -103,7 +108,6 @@ export default function DeliveredParcels() {
     try {
       const response = await api.get('/parcel/guard/delivered');
       setParcels(response.data.parcels);
-      setFilteredParcels(response.data.parcels);
     } catch (error) {
       console.error('Error fetching parcels:', error);
     } finally {
@@ -116,21 +120,16 @@ export default function DeliveredParcels() {
     fetchParcels();
   };
 
-  const handleSearch = (query: string) => {
-    setSearchQuery(query);
-    if (query.trim() === '') {
-      setFilteredParcels(parcels);
-    } else {
-      const lowercaseQuery = query.toLowerCase();
-      const filtered = parcels.filter((parcel) => {
-        const roomMatch = parcel.room_number.toLowerCase().includes(lowercaseQuery);
-        const rollMatch = parcel.roll_number?.toLowerCase().includes(lowercaseQuery);
-        const nameMatch = parcel.student_name?.toLowerCase().includes(lowercaseQuery);
-        return roomMatch || rollMatch || nameMatch;
-      });
-      setFilteredParcels(filtered);
-    }
-  };
+  const filteredParcels = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    if (!q) return parcels;
+    return parcels.filter((parcel) =>
+      parcel.display_id?.toLowerCase().includes(q) ||
+      parcel.room_number.toLowerCase().includes(q) ||
+      parcel.roll_number?.toLowerCase().includes(q) ||
+      parcel.student_name?.toLowerCase().includes(q)
+    );
+  }, [parcels, searchQuery]);
 
   const fetchStudentDetails = async (studentId: string) => {
     setSelectedStudent(null);
@@ -142,6 +141,7 @@ export default function DeliveredParcels() {
       setSelectedStudent(response.data.student);
     } catch (error: any) {
       console.error('Error fetching student details:', error?.response?.status, error?.response?.data || error?.message);
+      setStudentModalVisible(false);
       setErrorMessage(extractErrorMessage(error, 'Failed to fetch student details'));
     } finally {
       setLoadingStudent(false);
@@ -172,68 +172,6 @@ export default function DeliveredParcels() {
     setLoadingStudent(false);
   };
 
-  const renderParcelItem = ({ item, index }: { item: Parcel; index: number }) => (
-    <AnimatedCard index={index} activeIndex={activeIndex} scrollY={scrollY} status={item.status}>
-      <View style={styles.parcelCard}>
-        <View style={styles.parcelHeader}>
-          <View style={styles.parcelInfo}>
-            <Text style={styles.roomNumber}>Room {item.room_number}</Text>
-            <StatusStamp status="DELIVERED" small />
-          </View>
-          <View style={styles.headerActions}>
-            {item.collected_by_delegate && (
-              <TouchableOpacity
-                style={styles.delegationBadge}
-                onPress={() => openDelegationReceiverDetails(item)}
-                activeOpacity={0.8}
-              >
-                <Ionicons name="people-outline" size={18} color={Colors.accentGreen} />
-              </TouchableOpacity>
-            )}
-            {item.student_id && (
-              <TouchableOpacity
-                style={styles.infoButton}
-                onPress={() => fetchStudentDetails(item.student_id!)}
-                activeOpacity={0.8}
-              >
-                <Ionicons name="information-circle-outline" size={22} color={Colors.accentBlue} />
-              </TouchableOpacity>
-            )}
-          </View>
-        </View>
-
-        {item.student_name && (
-          <View style={styles.studentInfo}>
-            <Ionicons name="person" size={16} color={Colors.textMuted} />
-            <Text style={styles.studentName}>{item.student_name}</Text>
-            {item.roll_number && <Text style={styles.rollNumber}>({item.roll_number})</Text>}
-          </View>
-        )}
-
-        {item.description && (
-          <Text style={styles.description} numberOfLines={1}>{item.description}</Text>
-        )}
-
-        <ParcelTimeline
-          history={item.status_history}
-          currentStatus={item.status}
-          createdAt={item.created_at}
-          assignedAt={item.assigned_at}
-          otpSentAt={item.otp_sent_at}
-          deliveredAt={item.delivered_at}
-          compact
-        />
-
-        {item.collected_by_delegate && (
-          <Text style={styles.tapHint}>Delegated pickup completed. Tap the people icon for receiver details.</Text>
-        )}
-        {!item.collected_by_delegate && item.student_id && (
-          <Text style={styles.tapHint}>Tap the info icon to view student details.</Text>
-        )}
-      </View>
-    </AnimatedCard>
-  );
-
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       <View style={styles.content}>
@@ -247,33 +185,23 @@ export default function DeliveredParcels() {
 
         <SearchBar
           value={searchQuery}
-          onChangeText={handleSearch}
+          onChangeText={setSearchQuery}
           placeholder="Search by room, roll number, or name..."
           containerStyle={styles.searchContainer}
         />
 
         <View style={styles.contentHeader}>
-          <Text style={styles.sectionTitle}>Delivered Parcels</Text>
+          <Text style={styles.sectionKicker}>Collected & handed over</Text>
+          <Text style={styles.sectionCount}>{filteredParcels.length}</Text>
         </View>
 
-        <Animated.FlatList
+        <FlatList
           data={filteredParcels}
-          extraData={activeIndex}
-          renderItem={renderParcelItem}
+          renderItem={({ item }) => <ParcelRow parcel={item} onPress={() => setDetailParcel(item)} />}
           keyExtractor={(item) => item._id}
-          contentContainerStyle={[
-            styles.listContainer,
-            contentContainerStyle ?? null,
-          ]}
-          onLayout={onLayout}
-          onScroll={onScroll}
-          scrollEventThrottle={16}
-          snapToInterval={cardStep}
-          snapToAlignment="center"
-          decelerationRate={0.992}
+          contentContainerStyle={styles.listContainer}
+          ItemSeparatorComponent={() => <View style={{ height: 10 }} />}
           showsVerticalScrollIndicator={false}
-          onScrollEndDrag={onScrollEndDrag}
-          onMomentumScrollEnd={onMomentumScrollEnd}
           refreshControl={
             <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={Colors.accent} />
           }
@@ -288,96 +216,95 @@ export default function DeliveredParcels() {
         />
       </View>
 
+      {/* Compact row → expanded detail sheet (same pattern as pending parcels) */}
+      <ParcelDetailSheet parcel={detailParcel} onClose={() => setDetailParcel(null)}>
+        {detailParcel?.collected_by_delegate && (
+          <TouchableOpacity
+            style={[styles.sheetBtn, styles.sheetBtnGhost]}
+            onPress={() => {
+              const p = detailParcel;
+              setDetailParcel(null);
+              if (p) openDelegationReceiverDetails(p);
+            }}
+          >
+            <Ionicons name="people-outline" size={18} color={Colors.accentGreen} />
+            <Text style={styles.sheetBtnGhostText}>Delegation Receiver</Text>
+          </TouchableOpacity>
+        )}
+
+        {detailParcel?.student_id && (
+          <TouchableOpacity
+            style={[styles.sheetBtn, styles.sheetBtnPrimary]}
+            onPress={() => {
+              const id = detailParcel?.student_id;
+              setDetailParcel(null);
+              if (id) fetchStudentDetails(id);
+            }}
+          >
+            <Ionicons name="person-circle-outline" size={18} color="#FFFFFF" />
+            <Text style={styles.sheetBtnPrimaryText}>Student Details</Text>
+          </TouchableOpacity>
+        )}
+      </ParcelDetailSheet>
+
+      {/* Student / delegation receiver dossier */}
       <Modal
         visible={studentModalVisible}
         animationType="slide"
         transparent
         onRequestClose={() => setStudentModalVisible(false)}
       >
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>{studentModalTitle}</Text>
-              <TouchableOpacity onPress={() => setStudentModalVisible(false)}>
-                <Ionicons name="close" size={24} color={Colors.textMuted} />
-              </TouchableOpacity>
-            </View>
+        <View style={styles.sheetOverlay}>
+          <Pressable style={StyleSheet.absoluteFill} onPress={() => setStudentModalVisible(false)} />
+          <View style={styles.sheet}>
+            <View style={styles.grabber} />
 
             {loadingStudent ? (
               <View style={styles.loadingContainer}>
-                <ActivityIndicator size="large" color={Colors.accentBlue} />
+                <ActivityIndicator size="large" color={Colors.accent} />
+                <Text style={styles.loadingText}>Loading details…</Text>
               </View>
             ) : selectedStudent ? (
-              <View style={styles.studentDetailsContainer}>
-                <View style={styles.detailRow}>
-                  <View style={styles.detailIconContainer}>
-                    <Ionicons name="person" size={24} color={Colors.accentBlue} />
+              <>
+                <View style={styles.identityRow}>
+                  <View style={styles.avatar}>
+                    <Ionicons name="person" size={26} color={Colors.accent} />
                   </View>
-                  <View style={styles.detailTextContainer}>
-                    <Text style={styles.detailLabel}>Name</Text>
-                    <Text style={styles.detailValue}>{selectedStudent.name}</Text>
+                  <View style={styles.identityText}>
+                    <Text style={styles.identityName} numberOfLines={1}>{selectedStudent.name}</Text>
+                    <Text style={styles.identityRoll}>{selectedStudent.roll_number}</Text>
                   </View>
+                  <Pressable onPress={() => setStudentModalVisible(false)} hitSlop={10}>
+                    <Ionicons name="close" size={22} color={Colors.textMuted} />
+                  </Pressable>
                 </View>
 
-                <View style={styles.detailRow}>
-                  <View style={styles.detailIconContainer}>
-                    <Ionicons name="card" size={24} color={Colors.accentBlue} />
-                  </View>
-                  <View style={styles.detailTextContainer}>
-                    <Text style={styles.detailLabel}>Roll Number</Text>
-                    <Text style={styles.detailValue}>{selectedStudent.roll_number}</Text>
-                  </View>
+                <View style={styles.recordStamp}>
+                  <Ionicons
+                    name={studentModalTitle === 'Delegation Receiver' ? 'people-outline' : 'id-card-outline'}
+                    size={12}
+                    color={Colors.accent}
+                  />
+                  <Text style={styles.recordStampText}>{studentModalTitle.toUpperCase()}</Text>
                 </View>
 
-                <View style={styles.detailRow}>
-                  <View style={styles.detailIconContainer}>
-                    <Ionicons name="mail" size={24} color={Colors.accentBlue} />
-                  </View>
-                  <View style={styles.detailTextContainer}>
-                    <Text style={styles.detailLabel}>Email</Text>
-                    <Text style={styles.detailValue}>{selectedStudent.email}</Text>
-                  </View>
-                </View>
-
-                {selectedStudent.contact_number && (
-                  <View style={styles.detailRow}>
-                    <View style={styles.detailIconContainer}>
-                      <Ionicons name="call" size={24} color={Colors.accentBlue} />
-                    </View>
-                    <View style={styles.detailTextContainer}>
-                      <Text style={styles.detailLabel}>Contact Number</Text>
-                      <Text style={styles.detailValue}>{selectedStudent.contact_number}</Text>
-                    </View>
-                  </View>
-                )}
-
-                <View style={styles.detailRow}>
-                  <View style={styles.detailIconContainer}>
-                    <Ionicons name="home" size={24} color={Colors.accentBlue} />
-                  </View>
-                  <View style={styles.detailTextContainer}>
-                    <Text style={styles.detailLabel}>Room Number</Text>
-                    <Text style={styles.detailValue}>{selectedStudent.room_number}</Text>
+                <View style={styles.fieldList}>
+                  <Field icon="mail-outline" label="Email" value={selectedStudent.email} />
+                  {selectedStudent.contact_number ? (
+                    <Field icon="call-outline" label="Contact" value={selectedStudent.contact_number} />
+                  ) : null}
+                  <View style={styles.fieldRowSplit}>
+                    <Field icon="home-outline" label="Room" value={selectedStudent.room_number} half />
+                    <Field icon="business-outline" label="Hostel" value={selectedStudent.hostel_type} half />
                   </View>
                 </View>
-
-                <View style={styles.detailRow}>
-                  <View style={styles.detailIconContainer}>
-                    <Ionicons name="business" size={24} color={Colors.accentBlue} />
-                  </View>
-                  <View style={styles.detailTextContainer}>
-                    <Text style={styles.detailLabel}>Hostel</Text>
-                    <Text style={styles.detailValue}>{selectedStudent.hostel_type}</Text>
-                  </View>
-                </View>
-              </View>
+              </>
             ) : (
-              <Text style={styles.noDataText}>No student data available</Text>
+              <Text style={styles.noDataText}>No details available</Text>
             )}
           </View>
         </View>
       </Modal>
-
     </SafeAreaView>
   );
 }
@@ -390,112 +317,34 @@ const styles = StyleSheet.create({
   content: {
     flex: 1,
     paddingHorizontal: 16,
-    paddingTop: 4,
+    paddingTop: 8,
     paddingBottom: 16,
   },
   searchContainer: {
-    marginBottom: 8,
+    marginBottom: 12,
   },
   contentHeader: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 2,
+    justifyContent: 'space-between',
+    marginBottom: 10,
   },
-  sectionTitle: {
-    fontSize: Platform.OS === 'android' ? 19 : 20,
+  sectionKicker: {
+    fontFamily: Fonts.mono,
+    fontSize: 12,
     fontWeight: '700',
-    color: Colors.textPrimary,
-    letterSpacing: 0.2,
-    lineHeight: Platform.OS === 'android' ? 22 : 24,
-    includeFontPadding: false,
-    flexShrink: 1,
-    marginRight: 12,
+    letterSpacing: 1.2,
+    textTransform: 'uppercase',
+    color: Colors.textSecondary,
+  },
+  sectionCount: {
+    fontFamily: Fonts.mono,
+    fontSize: 13,
+    fontWeight: '700',
+    color: Colors.textMuted,
   },
   listContainer: {
     paddingBottom: 16,
-  },
-  parcelCard: {
-    ...GlassCard,
-    height: DELIVERED_STACK_CARD_HEIGHT,
-    padding: 16,
-    overflow: 'hidden',
-  },
-  parcelHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 12,
-  },
-  headerActions: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  infoButton: {
-    width: 28,
-    height: 28,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  delegationBadge: {
-    width: 30,
-    height: 30,
-    borderRadius: 15,
-    backgroundColor: Colors.accentGreenDim,
-    borderWidth: 1,
-    borderColor: Colors.accentGreen,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  parcelInfo: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  roomNumber: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: Colors.textPrimary,
-  },
-  deliveredBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 6,
-    backgroundColor: Colors.deliveredBg,
-  },
-  deliveredText: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: Colors.delivered,
-  },
-  studentInfo: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    marginBottom: 8,
-  },
-  studentName: {
-    fontSize: 14,
-    color: Colors.textSecondary,
-  },
-  rollNumber: {
-    fontSize: 12,
-    color: Colors.textMuted,
-  },
-  description: {
-    fontSize: 14,
-    color: Colors.textMuted,
-    marginBottom: 12,
-  },
-  tapHint: {
-    fontSize: 12,
-    color: Colors.accentBlue,
-    fontStyle: 'italic',
-    textAlign: 'center',
   },
   emptyContainer: {
     flex: 1,
@@ -523,78 +372,171 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: Colors.accentRed,
   },
-  modalOverlay: {
+  sheetBtn: {
+    flexGrow: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    height: 46,
+    borderRadius: 10,
+    borderWidth: 1,
+    paddingHorizontal: 16,
+  },
+  sheetBtnGhost: {
+    backgroundColor: Colors.surface,
+    borderColor: Colors.surfaceBorder,
+  },
+  sheetBtnGhostText: {
+    color: Colors.textPrimary,
+    fontSize: 15,
+    fontWeight: '700',
+  },
+  sheetBtnPrimary: {
+    backgroundColor: Colors.accentBlue,
+    borderColor: Colors.accentBlue,
+  },
+  sheetBtnPrimaryText: {
+    color: '#FFFFFF',
+    fontSize: 15,
+    fontWeight: '700',
+  },
+  sheetOverlay: {
     flex: 1,
     backgroundColor: Colors.overlay,
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 24,
+    justifyContent: 'flex-end',
   },
-  modalContent: {
+  sheet: {
     backgroundColor: Colors.bg,
-    borderRadius: 14,
+    borderTopLeftRadius: 18,
+    borderTopRightRadius: 18,
     borderWidth: 1,
+    borderBottomWidth: 0,
     borderColor: Colors.surfaceBorder,
-    padding: 24,
-    width: '100%',
-    maxWidth: 400,
+    paddingHorizontal: 20,
+    paddingTop: 10,
+    paddingBottom: 28,
   },
-  modalHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
+  grabber: {
+    alignSelf: 'center',
+    width: 40,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: Colors.surfaceBorder,
+    marginBottom: 16,
+  },
+  loadingContainer: {
+    paddingVertical: 44,
     alignItems: 'center',
-    marginBottom: 20,
+    gap: 12,
   },
-  modalTitle: {
-    fontSize: 20,
+  loadingText: {
+    fontSize: 14,
+    color: Colors.textSecondary,
+  },
+  identityRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 14,
+  },
+  avatar: {
+    width: 52,
+    height: 52,
+    borderRadius: 14,
+    backgroundColor: Colors.accentDim,
+    borderWidth: 1,
+    borderColor: Colors.accent,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  identityText: {
+    flex: 1,
+  },
+  identityName: {
+    fontSize: 19,
     fontWeight: '800',
     letterSpacing: -0.3,
     color: Colors.textPrimary,
   },
-  loadingContainer: {
-    padding: 40,
-    alignItems: 'center',
+  identityRoll: {
+    fontFamily: Fonts.mono,
+    fontSize: 13,
+    fontWeight: '700',
+    letterSpacing: 1,
+    color: Colors.accent,
+    marginTop: 3,
   },
-  studentDetailsContainer: {
-    gap: 16,
-  },
-  detailRow: {
+  recordStamp: {
     flexDirection: 'row',
     alignItems: 'center',
-    padding: 12,
+    alignSelf: 'flex-start',
+    gap: 6,
+    marginTop: 14,
+    paddingHorizontal: 9,
+    paddingVertical: 4,
+    borderWidth: 1.2,
+    borderColor: Colors.accent,
+    borderRadius: 3,
+    transform: [{ rotate: '-2deg' }],
+    opacity: 0.92,
+  },
+  recordStampText: {
+    fontFamily: Fonts.mono,
+    fontSize: 10,
+    fontWeight: '800',
+    letterSpacing: 1.5,
+    color: Colors.accent,
+  },
+  fieldList: {
+    marginTop: 18,
+    gap: 10,
+  },
+  fieldRowSplit: {
+    flexDirection: 'row',
+    gap: 10,
+  },
+  field: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
     backgroundColor: Colors.surface,
-    borderRadius: 12,
     borderWidth: 1,
     borderColor: Colors.surfaceBorder,
+    borderRadius: Radii.lg,
+    paddingVertical: 11,
+    paddingHorizontal: 12,
   },
-  detailIconContainer: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    backgroundColor: Colors.accentBlueDim,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 12,
-  },
-  detailTextContainer: {
+  fieldHalf: {
     flex: 1,
   },
-  detailLabel: {
+  fieldIcon: {
+    width: 32,
+    height: 32,
+    borderRadius: 9,
+    backgroundColor: Colors.accentDim,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  fieldText: {
+    flex: 1,
+  },
+  fieldLabel: {
     fontFamily: Fonts.mono,
-    fontSize: 10.5,
+    fontSize: 9.5,
     letterSpacing: 1,
     textTransform: 'uppercase',
     color: Colors.textMuted,
-    marginBottom: 4,
   },
-  detailValue: {
-    fontSize: 16,
+  fieldValue: {
+    fontSize: 15,
+    fontWeight: '600',
     color: Colors.textPrimary,
+    marginTop: 2,
   },
   noDataText: {
     textAlign: 'center',
     color: Colors.textMuted,
     fontSize: 14,
-    padding: 24,
+    paddingVertical: 32,
   },
 });

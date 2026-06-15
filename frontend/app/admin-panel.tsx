@@ -859,57 +859,35 @@ export default function AdminPanel() {
         </ScrollView>
 
         <View style={styles.bottomTaskbar}>
-          <TouchableOpacity
-            style={[styles.bottomTaskButton, activeTab === 'USER_MANAGEMENT' && styles.bottomTaskButtonActive]}
-            onPress={() => setActiveTab('USER_MANAGEMENT')}
-            activeOpacity={0.8}
-            accessibilityLabel="User management tab"
-          >
-            <Ionicons
-              name="person-add-outline"
-              size={22}
-              color={activeTab === 'USER_MANAGEMENT' ? Colors.accent : Colors.textMuted}
-            />
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={[styles.bottomTaskButton, activeTab === 'STUDENT_LIFECYCLE' && styles.bottomTaskButtonActive]}
-            onPress={() => setActiveTab('STUDENT_LIFECYCLE')}
-            activeOpacity={0.8}
-            accessibilityLabel="Student lifecycle tab"
-          >
-            <Ionicons
-              name="git-compare-outline"
-              size={22}
-              color={activeTab === 'STUDENT_LIFECYCLE' ? Colors.accent : Colors.textMuted}
-            />
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={[styles.bottomTaskButton, activeTab === 'PARCEL_LIFECYCLE' && styles.bottomTaskButtonActive]}
-            onPress={() => setActiveTab('PARCEL_LIFECYCLE')}
-            activeOpacity={0.8}
-            accessibilityLabel="Parcel lifecycle tab"
-          >
-            <Ionicons
-              name="cube-outline"
-              size={22}
-              color={activeTab === 'PARCEL_LIFECYCLE' ? Colors.accent : Colors.textMuted}
-            />
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={[styles.bottomTaskButton, activeTab === 'REQUESTS' && styles.bottomTaskButtonActive]}
-            onPress={() => setActiveTab('REQUESTS')}
-            activeOpacity={0.8}
-            accessibilityLabel="Room change requests tab"
-          >
-            <Ionicons
-              name="mail-open-outline"
-              size={22}
-              color={activeTab === 'REQUESTS' ? Colors.accent : Colors.textMuted}
-            />
-          </TouchableOpacity>
+          {([
+            { key: 'USER_MANAGEMENT', icon: 'person-add-outline', label: 'Users' },
+            { key: 'STUDENT_LIFECYCLE', icon: 'git-compare-outline', label: 'Students' },
+            { key: 'PARCEL_LIFECYCLE', icon: 'cube-outline', label: 'Parcels' },
+            { key: 'REQUESTS', icon: 'mail-open-outline', label: 'Requests' },
+          ] as const).map((tab) => {
+            const isActive = activeTab === tab.key;
+            return (
+              <TouchableOpacity
+                key={tab.key}
+                style={[styles.bottomTaskButton, isActive && styles.bottomTaskButtonActive]}
+                onPress={() => setActiveTab(tab.key)}
+                activeOpacity={0.85}
+                accessibilityLabel={`${tab.label} tab`}
+              >
+                <Ionicons
+                  name={tab.icon}
+                  size={18}
+                  color={isActive ? Colors.accent : Colors.textMuted}
+                />
+                <Text
+                  style={[styles.bottomTaskLabel, isActive && styles.bottomTaskLabelActive]}
+                  numberOfLines={1}
+                >
+                  {tab.label}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
         </View>
       </KeyboardAvoidingView>
     </SafeAreaView>
@@ -979,18 +957,22 @@ const styles = StyleSheet.create({
   },
   bottomTaskbar: {
     flexDirection: 'row',
-    justifyContent: 'space-around',
+    justifyContent: 'space-between',
     alignItems: 'center',
-    paddingHorizontal: 24,
+    gap: 6,
+    paddingHorizontal: 12,
     paddingVertical: 10,
     backgroundColor: Colors.bg,
     borderTopWidth: 1,
     borderTopColor: Colors.surfaceBorder,
   },
   bottomTaskButton: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
+    flex: 1,
+    flexDirection: 'row',
+    gap: 5,
+    height: 44,
+    paddingHorizontal: 4,
+    borderRadius: 999,
     borderWidth: 1,
     borderColor: Colors.surfaceBorder,
     backgroundColor: Colors.surface,
@@ -1000,6 +982,16 @@ const styles = StyleSheet.create({
   bottomTaskButtonActive: {
     borderColor: Colors.accent,
     backgroundColor: Colors.accentDim,
+  },
+  bottomTaskLabel: {
+    fontSize: 11.5,
+    fontWeight: '700',
+    color: Colors.textMuted,
+    includeFontPadding: false,
+    flexShrink: 1,
+  },
+  bottomTaskLabelActive: {
+    color: Colors.accent,
   },
   section: {
     marginBottom: 32,

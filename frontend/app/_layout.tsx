@@ -10,6 +10,7 @@ import {
   Archivo_800ExtraBold,
 } from '@expo-google-fonts/archivo';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { StatusBar } from 'expo-status-bar';
 import { useAuthStore } from '../store/authStore';
 
@@ -43,8 +44,11 @@ if (TextAny.render && !TextAny.__archivoPatched) {
     const el = origRender.apply(this, args);
     const flat = (StyleSheet.flatten(el.props.style) || {}) as { fontFamily?: string; fontWeight?: unknown };
     if (flat.fontFamily) return el;
+    // Flatten to a single style object — on web `el` is already a resolved
+    // <span> whose style is a plain object, and handing react-dom a style
+    // *array* throws "Failed to set an indexed property on CSSStyleDeclaration".
     return React.cloneElement(el, {
-      style: [el.props.style, { fontFamily: archivoFamily(flat.fontWeight) }],
+      style: StyleSheet.flatten([el.props.style, { fontFamily: archivoFamily(flat.fontWeight) }]),
     });
   };
   TextAny.__archivoPatched = true;
@@ -71,26 +75,28 @@ export default function RootLayout() {
   }
 
   return (
-    <SafeAreaProvider>
-      <StatusBar style="dark" hidden />
-      <Stack screenOptions={{
-        headerShown: false,
-        animation: 'fade' as const,
-        contentStyle: { backgroundColor: '#ECE5D6' },
-      }}>
-        <Stack.Screen name="index" />
-        <Stack.Screen name="notice-board" />
-        <Stack.Screen name="terms-and-conditions" />
-        <Stack.Screen name="privacy-policy" />
-        <Stack.Screen name="role-selection" />
-        <Stack.Screen name="hostel-selection" />
-        <Stack.Screen name="guard-login" />
-        <Stack.Screen name="student-login" />
-        <Stack.Screen name="admin-login" />
-        <Stack.Screen name="guard-dashboard" />
-        <Stack.Screen name="student-dashboard" />
-        <Stack.Screen name="admin-panel" />
-      </Stack>
-    </SafeAreaProvider>
+    <GestureHandlerRootView style={{ flex: 1 }}>
+      <SafeAreaProvider>
+        <StatusBar style="dark" hidden />
+        <Stack screenOptions={{
+          headerShown: false,
+          animation: 'fade' as const,
+          contentStyle: { backgroundColor: '#ECE5D6' },
+        }}>
+          <Stack.Screen name="index" />
+          <Stack.Screen name="notice-board" />
+          <Stack.Screen name="terms-and-conditions" />
+          <Stack.Screen name="privacy-policy" />
+          <Stack.Screen name="role-selection" />
+          <Stack.Screen name="hostel-selection" />
+          <Stack.Screen name="guard-login" />
+          <Stack.Screen name="student-login" />
+          <Stack.Screen name="admin-login" />
+          <Stack.Screen name="guard-dashboard" />
+          <Stack.Screen name="student-dashboard" />
+          <Stack.Screen name="admin-panel" />
+        </Stack>
+      </SafeAreaProvider>
+    </GestureHandlerRootView>
   );
 }

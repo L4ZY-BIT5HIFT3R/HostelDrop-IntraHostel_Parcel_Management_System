@@ -4,9 +4,9 @@ import {
   Text,
   StyleSheet,
   RefreshControl,
-  Animated,
   TouchableOpacity,
   Modal,
+  FlatList,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -14,13 +14,12 @@ import api from '../../utils/api';
 import { useAuthStore } from '../../store/authStore';
 import { Colors, MinimalCard } from '../../utils/theme';
 import AppHeader from '../../components/AppHeader';
-import AnimatedCard, { STACK_CARD_SPACING, STACK_FOCUS_OFFSET } from '../../components/AnimatedCard';
-import ParcelTimeline from '../../components/ParcelTimeline';
-import StatusStamp from '../../components/StatusStamp';
-import { useAnimatedList } from '../../utils/useAnimatedList';
+import ParcelRow from '../../components/ParcelRow';
+import ParcelDetailSheet from '../../components/ParcelDetailSheet';
 
 interface Parcel {
   _id: string;
+  display_id?: string;
   hostel_type: string;
   room_number: string;
   status: string;
@@ -52,30 +51,13 @@ interface DelegationReceiverInfo {
   hostel_type?: string;
 }
 
-const DELIVERED_STACK_CARD_HEIGHT = 240;
-
 export default function MyParcels() {
   const { user } = useAuthStore();
   const [parcels, setParcels] = useState<Parcel[]>([]);
   const [refreshing, setRefreshing] = useState(false);
+  const [detailParcel, setDetailParcel] = useState<Parcel | null>(null);
   const [delegateModalVisible, setDelegateModalVisible] = useState(false);
   const [selectedDelegate, setSelectedDelegate] = useState<DelegationReceiverInfo | null>(null);
-
-  const {
-    activeIndex,
-    scrollY,
-    cardStep,
-    contentContainerStyle,
-    onLayout,
-    onScroll,
-    onScrollEndDrag,
-    onMomentumScrollEnd,
-  } = useAnimatedList({
-    itemCount: parcels.length,
-    cardHeight: DELIVERED_STACK_CARD_HEIGHT,
-    cardSpacing: STACK_CARD_SPACING,
-    focusOffset: STACK_FOCUS_OFFSET,
-  });
 
   useEffect(() => {
     fetchParcels();
@@ -115,45 +97,6 @@ export default function MyParcels() {
     setDelegateModalVisible(true);
   };
 
-  const renderParcelItem = ({ item, index }: { item: Parcel; index: number }) => (
-    <AnimatedCard index={index} activeIndex={activeIndex} scrollY={scrollY} status={item.status}>
-      <View style={styles.parcelCard}>
-        <View style={styles.parcelHeader}>
-          <View style={styles.parcelInfo}>
-            <Text style={styles.roomNumber}>Room {item.room_number}</Text>
-            <StatusStamp status="DELIVERED" small />
-          </View>
-          {item.collected_by_delegate && (
-            <TouchableOpacity
-              style={styles.delegationBadge}
-              onPress={() => openDelegateDetails(item)}
-              activeOpacity={0.8}
-            >
-              <Ionicons name="people-outline" size={18} color={Colors.textPrimary} />
-            </TouchableOpacity>
-          )}
-        </View>
-
-        {item.description && (
-          <Text style={styles.description} numberOfLines={1}>{item.description}</Text>
-        )}
-
-        <ParcelTimeline
-          history={item.status_history}
-          currentStatus={item.status}
-          createdAt={item.created_at}
-          assignedAt={item.assigned_at}
-          otpSentAt={item.otp_sent_at}
-          deliveredAt={item.delivered_at}
-          compact
-        />
-        {item.collected_by_delegate && (
-          <Text style={styles.tapHint}>Received via delegation. Tap the people icon for receiver details.</Text>
-        )}
-      </View>
-    </AnimatedCard>
-  );
-
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       <AppHeader
@@ -164,35 +107,43 @@ export default function MyParcels() {
         subtitleStyle={styles.headerSubtitle}
       />
 
-      <Animated.FlatList
-        data={parcels}
-        extraData={activeIndex}
-        renderItem={renderParcelItem}
-        keyExtractor={(item) => item._id}
-        contentContainerStyle={[
-          styles.listContainer,
-          contentContainerStyle ?? null,
-        ]}
-        onLayout={onLayout}
-        onScroll={onScroll}
-        scrollEventThrottle={16}
-        snapToInterval={cardStep}
-        snapToAlignment="center"
-        decelerationRate={0.992}
-        showsVerticalScrollIndicator={false}
-        onScrollEndDrag={onScrollEndDrag}
-        onMomentumScrollEnd={onMomentumScrollEnd}
-        refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={Colors.accent} />
-        }
-        ListEmptyComponent={
-          <View style={styles.emptyContainer}>
-            <Ionicons name="cube-outline" size={64} color={Colors.textMuted} />
-            <Text style={styles.emptyText}>No delivered parcels yet</Text>
-            <Text style={styles.emptySubtext}>Your delivered parcels will appear here</Text>
-          </View>
-        }
-      />
+      <View style={styles.content}>
+        <FlatList
+          data={parcels}
+          renderItem={({ item }) => <ParcelRow parcel={item} onPress={() => setDetailParcel(item)} />}
+          keyExtractor={(item) => item._id}
+          contentContainerStyle={styles.listContainer}
+          ItemSeparatorComponent={() => <View style={{ height: 10 }} />}
+          showsVerticalScrollIndicator={false}
+          refreshControl={
+            <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={Colors.accent} />
+          }
+          ListEmptyComponent={
+            <View style={styles.emptyContainer}>
+              <Ionicons name="cube-outline" size={64} color={Colors.textMuted} />
+              <Text style={styles.emptyText}>No delivered parcels yet</Text>
+              <Text style={styles.emptySubtext}>Your delivered parcels will appear here</Text>
+            </View>
+          }
+        />
+      </View>
+
+      {/* Compact row → expanded detail sheet */}
+      <ParcelDetailSheet parcel={detailParcel} onClose={() => setDetailParcel(null)}>
+        {detailParcel?.collected_by_delegate && (
+          <TouchableOpacity
+            style={styles.sheetBtn}
+            onPress={() => {
+              const p = detailParcel;
+              setDetailParcel(null);
+              if (p) openDelegateDetails(p);
+            }}
+          >
+            <Ionicons name="people-outline" size={18} color="#FFFFFF" />
+            <Text style={styles.sheetBtnText}>View Delegation Receiver</Text>
+          </TouchableOpacity>
+        )}
+      </ParcelDetailSheet>
 
       <Modal
         visible={delegateModalVisible}
@@ -249,65 +200,29 @@ const styles = StyleSheet.create({
     color: Colors.textSecondary,
     marginTop: 4,
   },
+  content: {
+    flex: 1,
+    paddingHorizontal: 16,
+    paddingTop: 12,
+  },
   listContainer: {
-    padding: 16,
+    paddingBottom: 16,
   },
-  parcelCard: {
-    ...MinimalCard,
-    height: DELIVERED_STACK_CARD_HEIGHT,
-    padding: 20,
-    overflow: 'hidden',
-  },
-  parcelHeader: {
-    marginBottom: 12,
+  sheetBtn: {
+    flexGrow: 1,
     flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  parcelInfo: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  roomNumber: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: Colors.textPrimary,
-  },
-  deliveredBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 6,
-    backgroundColor: Colors.deliveredBg,
-  },
-  deliveredText: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: Colors.delivered,
-  },
-  delegationBadge: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: Colors.surface,
-    borderWidth: 1,
-    borderColor: Colors.surfaceBorder,
     alignItems: 'center',
     justifyContent: 'center',
+    gap: 8,
+    height: 48,
+    borderRadius: 10,
+    paddingHorizontal: 16,
+    backgroundColor: Colors.accent,
   },
-  description: {
-    fontSize: 14,
-    color: Colors.textMuted,
-    marginBottom: 12,
-  },
-  tapHint: {
-    fontSize: 12,
-    color: Colors.textSecondary,
-    marginTop: 8,
-    textAlign: 'center',
+  sheetBtnText: {
+    color: '#FFFFFF',
+    fontSize: 15,
+    fontWeight: '700',
   },
   emptyContainer: {
     flex: 1,

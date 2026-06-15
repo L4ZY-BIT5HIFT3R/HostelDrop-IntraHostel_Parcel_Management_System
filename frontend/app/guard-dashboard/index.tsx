@@ -1,5 +1,6 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import QRCode from 'react-native-qrcode-svg';
+import { Swipeable } from 'react-native-gesture-handler';
 import {
   View,
   Text,
@@ -18,13 +19,16 @@ import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import api, { generateQrCode } from '../../utils/api';
 import { useAuthStore } from '../../store/authStore';
-import { Colors, Fonts, GlassCard } from '../../utils/theme';
+import { Colors, Fonts, GlassCard, Radii } from '../../utils/theme';
 import GlassTextInput from '../../components/GlassInput';
 import SearchBar from '../../components/SearchBar';
 import AppHeader from '../../components/AppHeader';
 import ParcelRow from '../../components/ParcelRow';
 import ParcelDetailSheet from '../../components/ParcelDetailSheet';
+import StatCard from '../../components/StatCard';
 import { extractErrorMessage } from '../../utils/errorMessage';
+
+type StatusFilter = 'ALL' | 'PENDING' | 'UNASSIGNED';
 
 interface Parcel {
   _id: string;
@@ -39,13 +43,55 @@ interface Parcel {
   student_email?: string;
 }
 
+/**
+ * A parcel row with a left-swipe quick action — for when the guard is sure and
+ * wants to skip the detail sheet: PENDING reveals "Show QR", UNASSIGNED reveals
+ * "Assign". Swiping past the threshold fires it directly.
+ */
+function SwipeRow({
+  item,
+  onOpenDetail,
+  onShowQr,
+  onAssign,
+}: {
+  item: Parcel;
+  onOpenDetail: () => void;
+  onShowQr: (parcel: Parcel) => void;
+  onAssign: (parcel: Parcel) => void;
+}) {
+  const ref = useRef<Swipeable>(null);
+  const isPending = item.status === 'PENDING';
+
+  return (
+    <Swipeable
+      ref={ref}
+      friction={2}
+      rightThreshold={44}
+      overshootRight={false}
+      renderRightActions={() => (
+        <View style={[styles.swipeAction, isPending ? styles.swipeActionQr : styles.swipeActionAssign]}>
+          <Ionicons name={isPending ? 'qr-code' : 'person-add'} size={20} color="#FFFFFF" />
+          <Text style={styles.swipeActionText}>{isPending ? 'Show QR' : 'Assign'}</Text>
+        </View>
+      )}
+      onSwipeableOpen={() => {
+        ref.current?.close();
+        if (isPending) onShowQr(item);
+        else onAssign(item);
+      }}
+    >
+      <ParcelRow parcel={item} onPress={onOpenDetail} />
+    </Swipeable>
+  );
+}
+
 export default function GuardDashboardIndex() {
   const router = useRouter();
   const { openAdd } = useLocalSearchParams<{ openAdd?: string }>();
   const { user, logout } = useAuthStore();
   const [parcels, setParcels] = useState<Parcel[]>([]);
-  const [filteredParcels, setFilteredParcels] = useState<Parcel[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>('ALL');
   const [refreshing, setRefreshing] = useState(false);
   const [addModalVisible, setAddModalVisible] = useState(false);
   const [assignModalVisible, setAssignModalVisible] = useState(false);
@@ -84,7 +130,6 @@ export default function GuardDashboardIndex() {
     try {
       const response = await api.get('/parcel/guard/pending');
       setParcels(response.data.parcels);
-      setFilteredParcels(response.data.parcels);
     } catch {
       Alert.alert('Unable to load parcels', 'Please refresh or login again.');
     } finally {
@@ -97,22 +142,29 @@ export default function GuardDashboardIndex() {
     fetchParcels();
   };
 
-  const handleSearch = (query: string) => {
-    setSearchQuery(query);
-    if (query.trim() === '') {
-      setFilteredParcels(parcels);
-    } else {
-      const lowercaseQuery = query.toLowerCase();
-      const filtered = parcels.filter((parcel) => {
-        const idMatch = parcel.display_id?.toLowerCase().includes(lowercaseQuery);
-        const roomMatch = parcel.room_number.toLowerCase().includes(lowercaseQuery);
-        const rollMatch = parcel.roll_number?.toLowerCase().includes(lowercaseQuery);
-        const nameMatch = parcel.student_name?.toLowerCase().includes(lowercaseQuery);
-        return idMatch || roomMatch || rollMatch || nameMatch;
-      });
-      setFilteredParcels(filtered);
+  const counts = useMemo(() => {
+    let pending = 0;
+    let unassigned = 0;
+    for (const p of parcels) {
+      if (p.status === 'PENDING') pending += 1;
+      else if (p.status === 'UNASSIGNED') unassigned += 1;
     }
-  };
+    return { total: parcels.length, pending, unassigned };
+  }, [parcels]);
+
+  const filteredParcels = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    return parcels.filter((parcel) => {
+      if (statusFilter !== 'ALL' && parcel.status !== statusFilter) return false;
+      if (!q) return true;
+      return (
+        parcel.display_id?.toLowerCase().includes(q) ||
+        parcel.room_number.toLowerCase().includes(q) ||
+        parcel.roll_number?.toLowerCase().includes(q) ||
+        parcel.student_name?.toLowerCase().includes(q)
+      );
+    });
+  }, [parcels, searchQuery, statusFilter]);
 
   const handleAddParcel = async () => {
     if (!roomNumber.trim()) {
@@ -249,21 +301,26 @@ export default function GuardDashboardIndex() {
   };
 
   const renderParcelItem = ({ item }: { item: Parcel }) => (
-    <ParcelRow parcel={item} onPress={() => setDetailParcel(item)} />
+    <SwipeRow
+      item={item}
+      onOpenDetail={() => setDetailParcel(item)}
+      onShowQr={handleShowQR}
+      onAssign={(p) => {
+        setSelectedParcel(p);
+        setAssignModalVisible(true);
+      }}
+    />
   );
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       <AppHeader
-        title="Guard Dashboard"
-        subtitle={`${user?.hostel_type ?? ''} Hostel`}
+        title="Guard Desk"
+        subtitle={`${user?.hostel_type ?? ''} Hostel · Receiving`}
+        showBrand
         containerStyle={styles.header}
         titleStyle={styles.headerTitle}
         subtitleStyle={styles.headerSubtitle}
-        onBackPress={async () => {
-          await logout();
-          router.replace('/role-selection');
-        }}
         actions={[
           {
             icon: 'log-out-outline',
@@ -275,16 +332,50 @@ export default function GuardDashboardIndex() {
       />
 
       <View style={styles.content}>
+        {/* Tappable overview — also filters the list */}
+        <View style={styles.statStrip}>
+          <StatCard
+            label="On Desk"
+            value={counts.total}
+            icon="albums-outline"
+            ink={Colors.accent}
+            inkDim={Colors.accentDim}
+            active={statusFilter === 'ALL'}
+            onPress={() => setStatusFilter('ALL')}
+          />
+          <StatCard
+            label="Pending"
+            value={counts.pending}
+            icon="time-outline"
+            ink={Colors.pending}
+            inkDim={Colors.accentAmberDim}
+            active={statusFilter === 'PENDING'}
+            onPress={() => setStatusFilter('PENDING')}
+          />
+          <StatCard
+            label="Unassigned"
+            value={counts.unassigned}
+            icon="help-circle-outline"
+            ink={Colors.unassigned}
+            inkDim={Colors.unassignedBg}
+            active={statusFilter === 'UNASSIGNED'}
+            onPress={() => setStatusFilter('UNASSIGNED')}
+          />
+        </View>
+
         {/* Search Bar */}
         <SearchBar
           value={searchQuery}
-          onChangeText={handleSearch}
+          onChangeText={setSearchQuery}
           placeholder="Search by room, roll number, or name..."
           containerStyle={styles.searchContainer}
         />
 
         <View style={styles.contentHeader}>
-          <Text style={styles.sectionTitle}>Pending & Unassigned Parcels</Text>
+          <Text style={styles.sectionKicker}>
+            {statusFilter === 'ALL' ? 'All parcels' : statusFilter === 'PENDING' ? 'Awaiting pickup' : 'Needs assignment'}
+          </Text>
+          <Text style={styles.sectionCount}>{filteredParcels.length}</Text>
         </View>
 
         <FlatList
@@ -301,7 +392,13 @@ export default function GuardDashboardIndex() {
             <View style={styles.emptyContainer}>
               <Ionicons name="cube-outline" size={64} color={Colors.textMuted} />
               <Text style={styles.emptyText}>
-                {searchQuery ? 'No parcels found' : 'No parcels to display'}
+                {searchQuery
+                  ? 'No parcels found'
+                  : statusFilter === 'PENDING'
+                    ? 'No pending parcels'
+                    : statusFilter === 'UNASSIGNED'
+                      ? 'No unassigned parcels'
+                      : 'No parcels to display'}
               </Text>
             </View>
           }
@@ -664,11 +761,33 @@ const styles = StyleSheet.create({
     paddingTop: 8,
     paddingBottom: 16,
   },
+  statStrip: {
+    flexDirection: 'row',
+    gap: 10,
+    marginBottom: 14,
+  },
   searchContainer: {
     marginBottom: 12,
   },
   contentHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
     marginBottom: 10,
+  },
+  sectionKicker: {
+    fontFamily: Fonts.mono,
+    fontSize: 12,
+    fontWeight: '700',
+    letterSpacing: 1.2,
+    textTransform: 'uppercase',
+    color: Colors.textSecondary,
+  },
+  sectionCount: {
+    fontFamily: Fonts.mono,
+    fontSize: 13,
+    fontWeight: '700',
+    color: Colors.textMuted,
   },
   sectionTitle: {
     fontSize: Platform.OS === 'android' ? 19 : 20,
@@ -681,6 +800,26 @@ const styles = StyleSheet.create({
   },
   listContainer: {
     paddingBottom: 16,
+  },
+  swipeAction: {
+    width: 92,
+    marginLeft: 8,
+    borderRadius: Radii.lg,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 4,
+  },
+  swipeActionQr: {
+    backgroundColor: Colors.accent,
+  },
+  swipeActionAssign: {
+    backgroundColor: Colors.accentBlue,
+  },
+  swipeActionText: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    fontWeight: '800',
+    letterSpacing: 0.3,
   },
   parcelCard: {
     ...GlassCard,
