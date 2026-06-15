@@ -1,5 +1,5 @@
 import React, { useRef, useState } from 'react';
-import { ActivityIndicator, Modal, Platform, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Alert, Modal, Platform, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import { Ionicons } from '@expo/vector-icons';
@@ -30,14 +30,28 @@ export default function LabelScanner({ visible, onClose, onScanned }: Props) {
     try {
       const photo = await cameraRef.current?.takePictureAsync({ quality: 0.8 });
       if (!photo?.uri) {
+        Alert.alert('Capture failed', 'Could not take the photo. Please try again.');
         return;
       }
+
       const result = await TextRecognition.recognize(photo.uri);
       const labelText = extractLabelLine(result);
+
+      if (!labelText.trim()) {
+        Alert.alert(
+          'No text detected',
+          'Hold steady with good lighting and frame the label clearly, then scan again.',
+        );
+        return; // keep the scanner open so the guard can retry
+      }
+
       onScanned(labelText);
       onClose();
-    } catch {
-      // Swallow OCR/camera errors; the guard can retry or type manually.
+    } catch (error: any) {
+      // Surface the real reason instead of failing silently. A "doesn't seem to
+      // be linked" message means the ML Kit native module isn't in this build —
+      // rebuild the dev client (it does not work in Expo Go).
+      Alert.alert('Scan failed', error?.message ? String(error.message) : 'Unknown OCR error.');
     } finally {
       setProcessing(false);
     }
