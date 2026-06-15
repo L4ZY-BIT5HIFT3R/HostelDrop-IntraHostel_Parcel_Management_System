@@ -16,7 +16,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { useLocalSearchParams, useRouter } from 'expo-router';
+import { Href, useLocalSearchParams, useRouter } from 'expo-router';
 import api, { generateQrCode } from '../../utils/api';
 import { useAuthStore } from '../../store/authStore';
 import { Colors, Fonts, GlassCard, Radii } from '../../utils/theme';
@@ -26,6 +26,7 @@ import AppHeader from '../../components/AppHeader';
 import ParcelRow from '../../components/ParcelRow';
 import ParcelDetailSheet from '../../components/ParcelDetailSheet';
 import StatCard from '../../components/StatCard';
+import LabelAutoMatch from '../../components/LabelAutoMatch';
 import { extractErrorMessage } from '../../utils/errorMessage';
 
 type StatusFilter = 'ALL' | 'PENDING' | 'UNASSIGNED';
@@ -419,12 +420,33 @@ export default function GuardDashboardIndex() {
           <View style={styles.modalContent}>
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>Add New Parcel</Text>
-              <TouchableOpacity onPress={() => setAddModalVisible(false)}>
-                <Ionicons name="close" size={24} color={Colors.textMuted} />
-              </TouchableOpacity>
+              <View style={styles.modalHeaderActions}>
+                <TouchableOpacity
+                  style={styles.bulkLink}
+                  onPress={() => {
+                    setAddModalVisible(false);
+                    router.push('/guard-dashboard/bulk-intake' as Href);
+                  }}
+                >
+                  <Ionicons name="layers-outline" size={16} color={Colors.accentBlue} />
+                  <Text style={styles.bulkLinkText}>Bulk</Text>
+                </TouchableOpacity>
+                <TouchableOpacity onPress={() => setAddModalVisible(false)}>
+                  <Ionicons name="close" size={24} color={Colors.textMuted} />
+                </TouchableOpacity>
+              </View>
             </View>
 
             <ScrollView style={styles.modalForm}>
+              <LabelAutoMatch
+                containerStyle={styles.inputGroup}
+                onApply={({ room_number, roll_number, student_name }) => {
+                  if (room_number) setRoomNumber(room_number);
+                  if (roll_number) setRollNumber(roll_number);
+                  if (student_name) setStudentName(student_name);
+                }}
+              />
+
               <View style={styles.inputGroup}>
                 <GlassTextInput
                   label="Room Number *"
@@ -1003,6 +1025,25 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     letterSpacing: -0.3,
     color: Colors.textPrimary,
+  },
+  modalHeaderActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 14,
+  },
+  bulkLink: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: Radii.lg,
+    backgroundColor: Colors.accentBlueDim,
+  },
+  bulkLinkText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: Colors.accentBlue,
   },
   modalForm: {
     paddingHorizontal: 24,

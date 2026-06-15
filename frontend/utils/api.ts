@@ -73,6 +73,47 @@ api.interceptors.response.use(
   }
 );
 
+export interface StudentMatch {
+  roll_number?: string | null;
+  name?: string | null;
+  room_number?: string | null;
+  score?: number;
+  room_matches?: boolean | null;
+}
+
+export interface MatchStudentResponse {
+  parsed: { name: string | null; room_number: string | null; roll_number: string | null };
+  exact_match: StudentMatch | null;
+  candidates: StudentMatch[];
+}
+
+export interface BulkParcelItem {
+  room_number: string;
+  roll_number?: string | null;
+  student_name?: string | null;
+  description?: string | null;
+}
+
+// Auto-match: parse a "Name | Room | Roll" label and resolve it to a student.
+export const matchStudent = async (q: string) => {
+  const response = await api.get('/parcel/match-student', { params: { q } });
+  return response.data as MatchStudentResponse;
+};
+
+// Bulk intake: log a batch of parcels in one request.
+export const bulkAddParcels = async (hostelType: string, items: BulkParcelItem[]) => {
+  const response = await api.post('/parcel/bulk-add', {
+    hostel_type: hostelType,
+    items,
+  });
+  return response.data as {
+    message: string;
+    added: number;
+    total: number;
+    results: { index: number; ok: boolean; error?: string }[];
+  };
+};
+
 export const generateQrCode = async (parcelId: string) => {
   const response = await api.post('/parcel/generate-qr', { parcel_id: parcelId });
   return response.data;

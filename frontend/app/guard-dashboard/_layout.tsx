@@ -75,6 +75,13 @@ export default function GuardDashboardLayout() {
           ),
         }}
       />
+      <Tabs.Screen
+        name="bulk-intake"
+        options={{
+          href: null,
+          headerShown: false,
+        }}
+      />
     </Tabs>
   );
 }
