@@ -44,10 +44,34 @@ from core.config import (  # noqa: E402,F401
     MAX_QUERY_STRING_BYTES,
     MAX_REQUEST_BODY_BYTES,
     ParcelStatus,
+    SENTRY_DSN,
+    SENTRY_TRACES_SAMPLE_RATE,
     UserRole,
     logger,
 )
+
+
+def _init_sentry() -> None:
+    """Initialize Sentry error monitoring when SENTRY_DSN is configured."""
+    if not SENTRY_DSN:
+        return
+    try:
+        import sentry_sdk  # imported lazily so the app runs without the package
+
+        sentry_sdk.init(
+            dsn=SENTRY_DSN,
+            environment=APP_ENV,
+            traces_sample_rate=SENTRY_TRACES_SAMPLE_RATE,
+            send_default_pii=False,
+        )
+        logger.info("Sentry error monitoring enabled for environment '%s'", APP_ENV)
+    except Exception as exc:  # pragma: no cover - monitoring must never block startup
+        logger.warning("Could not initialize Sentry: %s", exc)
+
+
+_init_sentry()
 from core.db import client, db  # noqa: E402,F401
+from core.redis_client import redis_enabled, redis_ping  # noqa: E402,F401
 from core.domain import (  # noqa: E402,F401
     ensure_admin_user,
     ensure_database_indexes,
@@ -66,6 +90,11 @@ from core.validators import (  # noqa: E402,F401
     parse_object_id,
     validate_hostel_type,
     validate_parcel_status,
+)
+from core.label_match import (  # noqa: E402,F401
+    name_similarity,
+    parse_label,
+    rank_candidates,
 )
 from core.models import (  # noqa: E402,F401
     AssignParcelRequest,
@@ -95,14 +124,14 @@ async def app_lifespan(_: FastAPI):
     global auto_delete_task
     await ensure_database_indexes()
     await ensure_admin_user()
-    if IS_PRODUCTION:
-        # The auth/QR rate limiters keep state in process memory, so each worker
-        # or instance enforces limits independently. Behind multiple workers the
-        # effective limit is multiplied by the worker count. Run a single worker,
-        # or move the limiter to a shared store (e.g. Redis), for a hard global cap.
+    if IS_PRODUCTION and not redis_enabled():
+        # Without Redis the auth/QR rate limiters keep state in process memory, so
+        # each worker or instance enforces limits independently and the effective
+        # limit is multiplied by the worker count. Set REDIS_URL to enforce a hard
+        # global cap, or run a single worker.
         logger.warning(
-            "Rate limiting is in-memory and per-process. Use a single worker or a "
-            "shared-store limiter to enforce a hard global limit in production."
+            "REDIS_URL is not set: rate limiting is in-memory and per-process. Set "
+            "REDIS_URL for a shared global limit, or run a single worker in production."
         )
     if not auto_delete_task or auto_delete_task.done():
         auto_delete_task = asyncio.create_task(periodic_delivered_cleanup())
@@ -156,6 +185,32 @@ async def add_security_headers(request: Request, call_next):
     if IS_PRODUCTION:
         response.headers.setdefault("Strict-Transport-Security", "max-age=63072000; includeSubDomains; preload")
     return response
+
+
+@app.get("/health")
+async def health_check():
+    """Liveness/readiness probe for the platform (Render) and uptime monitors.
+
+    Reports DB connectivity (and Redis when configured). Returns 503 if the
+    database is unreachable so the platform can avoid routing traffic to a
+    broken instance.
+    """
+    db_ok = False
+    try:
+        await client.admin.command("ping")
+        db_ok = True
+    except Exception as exc:
+        logger.warning("Health check: database ping failed: %s", exc)
+
+    checks = {"database": "ok" if db_ok else "down"}
+    if redis_enabled():
+        checks["redis"] = "ok" if await redis_ping() else "down"
+
+    status_ok = db_ok
+    payload = {"status": "ok" if status_ok else "degraded", "checks": checks}
+    if not status_ok:
+        return JSONResponse(status_code=503, content=payload)
+    return payload
 
 
 # Register routers. Order matters: ``students`` (literal /student/notifications)

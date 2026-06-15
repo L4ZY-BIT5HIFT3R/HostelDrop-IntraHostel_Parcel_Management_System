@@ -1,6 +1,8 @@
 """Pydantic request and response models with field-level sanitization."""
 from datetime import datetime
-from typing import Optional
+from typing import List, Optional
+
+MAX_BULK_PARCEL_ITEMS = 50
 
 from pydantic import BaseModel, ConfigDict, EmailStr, field_validator, model_validator
 
@@ -354,6 +356,63 @@ class AddParcelRequest(SanitizedRequestModel):
             return None
         cleaned = _validate_description(value)
         return cleaned or None
+
+
+class BulkParcelItem(SanitizedRequestModel):
+    """A single parcel within a bulk intake batch (hostel comes from the guard)."""
+    room_number: str
+    roll_number: Optional[str] = None
+    student_name: Optional[str] = None
+    description: Optional[str] = None
+
+    @field_validator("room_number")
+    @classmethod
+    def validate_room_number(cls, value: str) -> str:
+        return _validate_room_number(value)
+
+    @field_validator("roll_number")
+    @classmethod
+    def validate_roll_number(cls, value: Optional[str]) -> Optional[str]:
+        if value is None or value == "":
+            return None
+        return _validate_roll_number(value)
+
+    @field_validator("student_name")
+    @classmethod
+    def validate_student_name(cls, value: Optional[str]) -> Optional[str]:
+        if value is None:
+            return None
+        cleaned = value.strip()
+        if cleaned == "":
+            return None
+        return _validate_name(cleaned, "Student name")
+
+    @field_validator("description")
+    @classmethod
+    def validate_description(cls, value: Optional[str]) -> Optional[str]:
+        if value is None:
+            return None
+        cleaned = _validate_description(value)
+        return cleaned or None
+
+
+class BulkAddParcelRequest(SanitizedRequestModel):
+    """Guard logs many parcels in one request (batch intake)."""
+    hostel_type: str
+    items: List[BulkParcelItem]
+
+    @field_validator("hostel_type")
+    @classmethod
+    def validate_hostel_type(cls, value: str) -> str:
+        return _normalize_hostel_type(value)
+
+    @model_validator(mode="after")
+    def validate_items(self):
+        if not self.items:
+            raise ValueError("At least one parcel is required")
+        if len(self.items) > MAX_BULK_PARCEL_ITEMS:
+            raise ValueError(f"Cannot log more than {MAX_BULK_PARCEL_ITEMS} parcels at once")
+        return self
 
 
 class AssignParcelRequest(SanitizedRequestModel):

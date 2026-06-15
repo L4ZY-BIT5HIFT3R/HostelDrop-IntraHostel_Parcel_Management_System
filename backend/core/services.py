@@ -1,6 +1,13 @@
-"""Outbound services: email, push notifications, and in-memory rate limiting."""
+"""Outbound services: email, push notifications, and rate limiting.
+
+The rate limiters use Redis for shared sliding-window state when ``REDIS_URL``
+is configured (so limits hold across workers/instances), and transparently fall
+back to per-process in-memory state otherwise or if Redis is unreachable.
+"""
 import smtplib
 import threading
+import time
+import uuid
 from collections import defaultdict, deque
 from datetime import datetime, timedelta
 from email.mime.multipart import MIMEMultipart
@@ -30,6 +37,7 @@ from .config import (
     utcnow,
 )
 from .db import db
+from .redis_client import get_redis
 
 
 def mask_email(email: str) -> str:
@@ -243,6 +251,59 @@ class InMemoryRateLimiter:
             return True
 
 
+class RateLimiter:
+    """Sliding-window rate limiter backed by Redis, with in-memory fallback.
+
+    When Redis is configured and reachable, the window state is stored in a
+    Redis sorted set so the limit is enforced globally across all workers and
+    instances. If Redis is unconfigured or a check fails, it falls back to the
+    bundled :class:`InMemoryRateLimiter` so requests are still limited per
+    process rather than not at all.
+    """
+
+    def __init__(self, name: str, max_requests: int, window_seconds: int, cleanup_interval_seconds: int = 60):
+        self.name = name
+        self.max_requests = max_requests
+        self.window_seconds = window_seconds
+        self._memory = InMemoryRateLimiter(
+            max_requests=max_requests,
+            window_seconds=window_seconds,
+            cleanup_interval_seconds=cleanup_interval_seconds,
+        )
+
+    async def allow(self, key: str) -> bool:
+        client = get_redis()
+        if client is None:
+            return self._memory.allow(key)
+
+        redis_key = f"rl:{self.name}:{key}"
+        now_ms = time.time() * 1000
+        window_ms = self.window_seconds * 1000
+        member = f"{now_ms}-{uuid.uuid4().hex}"
+
+        try:
+            async with client.pipeline(transaction=True) as pipe:
+                pipe.zremrangebyscore(redis_key, 0, now_ms - window_ms)
+                pipe.zadd(redis_key, {member: now_ms})
+                pipe.zcard(redis_key)
+                pipe.pexpire(redis_key, int(window_ms) + 1000)
+                results = await pipe.execute()
+            count = results[2]
+            if count > self.max_requests:
+                # Roll back our own marker so a rejected request does not keep
+                # the window saturated for legitimate callers.
+                await client.zrem(redis_key, member)
+                return False
+            return True
+        except Exception as exc:
+            logger.warning(
+                "Redis rate-limit check failed for %s, falling back to in-memory: %s",
+                self.name,
+                exc,
+            )
+            return self._memory.allow(key)
+
+
 def get_request_client_ip(request: Request) -> str:
     forwarded_for = request.headers.get("x-forwarded-for", "")
     if TRUST_PROXY_HEADERS and forwarded_for:
@@ -250,25 +311,29 @@ def get_request_client_ip(request: Request) -> str:
     return request.client.host if request.client else "unknown"
 
 
-auth_rate_limiter = InMemoryRateLimiter(
+auth_rate_limiter = RateLimiter(
+    name="auth",
     max_requests=AUTH_RATE_LIMIT_MAX_REQUESTS,
     window_seconds=AUTH_RATE_LIMIT_WINDOW_SECONDS,
     cleanup_interval_seconds=AUTH_RATE_LIMIT_CLEANUP_SECONDS,
 )
 
-qr_scan_ip_rate_limiter = InMemoryRateLimiter(
+qr_scan_ip_rate_limiter = RateLimiter(
+    name="qr-ip",
     max_requests=QR_SCAN_RATE_LIMIT_IP_MAX_REQUESTS,
     window_seconds=QR_SCAN_RATE_LIMIT_IP_WINDOW_SECONDS,
     cleanup_interval_seconds=QR_SCAN_RATE_LIMIT_CLEANUP_SECONDS,
 )
 
-qr_scan_user_rate_limiter = InMemoryRateLimiter(
+qr_scan_user_rate_limiter = RateLimiter(
+    name="qr-user",
     max_requests=QR_SCAN_RATE_LIMIT_USER_MAX_REQUESTS,
     window_seconds=QR_SCAN_RATE_LIMIT_USER_WINDOW_SECONDS,
     cleanup_interval_seconds=QR_SCAN_RATE_LIMIT_CLEANUP_SECONDS,
 )
 
-qr_scan_parcel_rate_limiter = InMemoryRateLimiter(
+qr_scan_parcel_rate_limiter = RateLimiter(
+    name="qr-parcel",
     max_requests=QR_SCAN_RATE_LIMIT_PARCEL_MAX_REQUESTS,
     window_seconds=QR_SCAN_RATE_LIMIT_PARCEL_WINDOW_SECONDS,
     cleanup_interval_seconds=QR_SCAN_RATE_LIMIT_CLEANUP_SECONDS,
@@ -278,7 +343,7 @@ qr_scan_parcel_rate_limiter = InMemoryRateLimiter(
 async def enforce_auth_rate_limit(request: Request):
     client_ip = get_request_client_ip(request)
     key = f"{request.url.path}:{client_ip}"
-    if not auth_rate_limiter.allow(key):
+    if not await auth_rate_limiter.allow(key):
         raise HTTPException(
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,
             detail="Too many requests. Please try again later.",
@@ -289,19 +354,19 @@ async def enforce_qr_scan_rate_limit(request: Request, current_user: dict, parce
     client_ip = get_request_client_ip(request)
     user_id = str(current_user.get("_id", "unknown"))
 
-    if not qr_scan_ip_rate_limiter.allow(f"verify-qr:ip:{client_ip}"):
+    if not await qr_scan_ip_rate_limiter.allow(f"verify-qr:ip:{client_ip}"):
         raise HTTPException(
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,
             detail="Too many QR scan attempts from this network. Please try again later.",
         )
 
-    if not qr_scan_user_rate_limiter.allow(f"verify-qr:user:{user_id}"):
+    if not await qr_scan_user_rate_limiter.allow(f"verify-qr:user:{user_id}"):
         raise HTTPException(
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,
             detail="Too many QR scan attempts for this account. Please wait and try again.",
         )
 
-    if not qr_scan_parcel_rate_limiter.allow(f"verify-qr:parcel:{parcel_id}"):
+    if not await qr_scan_parcel_rate_limiter.allow(f"verify-qr:parcel:{parcel_id}"):
         raise HTTPException(
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,
             detail="Too many QR scan attempts for this parcel. Please wait and try again.",

@@ -76,6 +76,10 @@ if IS_PRODUCTION and INCLUDE_DEBUG_OTP_IN_RESPONSE:
 if IS_PRODUCTION and ENABLE_SENSITIVE_LOGGING:
     raise RuntimeError("ENABLE_SENSITIVE_LOGGING cannot be enabled in production")
 
+# Error monitoring (Sentry). Enabled only when a DSN is provided.
+SENTRY_DSN = os.environ.get("SENTRY_DSN", "").strip()
+SENTRY_TRACES_SAMPLE_RATE = float(os.environ.get("SENTRY_TRACES_SAMPLE_RATE", "0.0"))
+
 TRUST_PROXY_HEADERS = os.environ.get("TRUST_PROXY_HEADERS", "false").strip().lower() == "true"
 ENFORCE_STUDENT_EMAIL_DOMAIN = os.environ.get("ENFORCE_STUDENT_EMAIL_DOMAIN", "true").strip().lower() == "true"
 STUDENT_EMAIL_DOMAIN = os.environ.get("STUDENT_EMAIL_DOMAIN", "iiitg.ac.in").strip().lower()

@@ -1,0 +1,14 @@
+# Keep the build context small and free of secrets/artifacts.
+.git
+.github
+frontend
+document
+logo
+**/__pycache__
+**/*.pyc
+**/.env
+**/.env.*
+*.tsv
+tests
+.venv
+venv

@@ -265,3 +265,49 @@ def test_security_headers_are_added_to_api_responses():
     assert response.headers.get("x-content-type-options") == "nosniff"
     assert response.headers.get("x-frame-options") == "DENY"
     assert response.headers.get("referrer-policy") == "no-referrer"
+
+
+def test_parse_label_canonical_three_parts():
+    server = load_server_module()
+    parsed = server.parse_label("Bittu Kumar | 214 | 21CS001")
+    assert parsed["name"] == "Bittu Kumar"
+    assert parsed["room_number"] == "214"
+    assert parsed["roll_number"] == "21CS001"
+
+
+def test_parse_label_recovers_swapped_room_and_roll():
+    server = load_server_module()
+    # Roll-like value sitting in the room column should be recovered.
+    parsed = server.parse_label("Bittu Kumar | 21CS001 | 214")
+    assert parsed["roll_number"] == "21CS001"
+    assert parsed["room_number"] == "214"
+
+
+def test_parse_label_single_token_detects_roll_vs_name():
+    server = load_server_module()
+    assert server.parse_label("21CS001")["roll_number"] == "21CS001"
+    name_only = server.parse_label("Bittu Kumar")
+    assert name_only["name"] == "Bittu Kumar"
+    assert name_only["roll_number"] is None
+
+
+def test_name_similarity_rewards_token_containment():
+    server = load_server_module()
+    assert server.name_similarity("bittu", "Bittu Kumar") >= 0.9
+    assert server.name_similarity("xyz", "Bittu Kumar") < 0.45
+    assert server.name_similarity("", "Bittu Kumar") == 0.0
+
+
+def test_rank_candidates_orders_by_similarity_and_flags_room():
+    server = load_server_module()
+    parsed = {"name": "Bittu Kumar", "room_number": "214", "roll_number": None}
+    students = [
+        {"name": "Bittu Kumar", "roll_number": "21CS001", "room_number": "214"},
+        {"name": "Rahul Sharma", "roll_number": "21CS099", "room_number": "300"},
+        {"name": "Bittu Kumara", "roll_number": "21CS002", "room_number": "215"},
+    ]
+    ranked = server.rank_candidates(parsed, students)
+    assert ranked[0]["roll_number"] == "21CS001"
+    assert ranked[0]["room_matches"] is True
+    # Rahul is dissimilar and should be filtered out by the threshold.
+    assert all(c["roll_number"] != "21CS099" for c in ranked)

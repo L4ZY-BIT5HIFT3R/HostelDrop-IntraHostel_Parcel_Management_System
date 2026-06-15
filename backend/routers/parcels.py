@@ -27,6 +27,7 @@ from core.config import (
     utcnow,
 )
 from core.db import db
+from core.label_match import parse_label, rank_candidates
 from core.domain import (
     build_delegated_receiver_info,
     build_status_event,
@@ -37,6 +38,7 @@ from core.domain import (
 from core.models import (
     AddParcelRequest,
     AssignParcelRequest,
+    BulkAddParcelRequest,
     GenerateDelegationRequest,
     GenerateQRRequest,
     SendOTPRequest,
@@ -63,21 +65,61 @@ from core.validators import parse_object_id, validate_hostel_type, validate_parc
 router = APIRouter(prefix="/api")
 
 
-@router.post("/parcel/add")
-async def add_parcel(request: AddParcelRequest, background_tasks: BackgroundTasks, current_user: dict = Depends(get_current_user)):
-    """Guard adds a new parcel"""
-    if current_user["role"] != UserRole.GUARD:
-        raise HTTPException(status_code=403, detail="Only guards can add parcels")
-    request_hostel_type = validate_hostel_type(request.hostel_type)
-    if request_hostel_type != current_user["hostel_type"]:
-        raise HTTPException(status_code=403, detail="Guards can only add parcels for their own hostel")
+async def _notify_assigned_parcel(email, name, room, push_token, parcel_id):
+    """Background task: email + push the owning student that their parcel arrived."""
+    try:
+        await send_parcel_notification(email, name, room)
+    except Exception as e:
+        logger.warning("Failed to send notification email (Background): %s", str(e))
+    if push_token:
+        await send_expo_push_notification(
+            [push_token],
+            "📦 Parcel Arrived!",
+            "Your parcel is now at the reception.",
+            {"parcelId": str(parcel_id)}
+        )
 
+
+async def _broadcast_unassigned_parcel(room_number, hostel_type, parcel_id):
+    """Background task: nudge a room when a parcel arrives without a known owner."""
+    try:
+        roommates = await db.users.find({
+            "room_number": room_number,
+            "hostel_type": hostel_type,
+            "role": UserRole.STUDENT
+        }).to_list(100)
+        tokens = [user.get("expoPushToken") for user in roommates if user.get("expoPushToken")]
+        if tokens:
+            await send_expo_push_notification(
+                tokens,
+                "📦 Parcel Arrived!",
+                f"A package has arrived at reception for your room ({room_number}). If you are expecting a delivery, please collect it.",
+                {"parcelId": str(parcel_id)}
+            )
+    except Exception as e:
+        logger.warning("Failed to send broadcast push: %s", str(e))
+
+
+async def _intake_parcel(
+    *,
+    current_user: dict,
+    background_tasks: BackgroundTasks,
+    room_number: str,
+    roll_number: Optional[str],
+    student_name: Optional[str],
+    description: Optional[str],
+) -> Dict[str, Any]:
+    """Build, insert, and schedule notifications for one intake parcel.
+
+    Shared by single ``/parcel/add`` and batch ``/parcel/bulk-add`` so both
+    behave identically (status, timeline, notifications).
+    """
     created_at = utcnow()
-    parcel_data = {
-        "display_id": generate_display_id(request.description),
+    parcel_data: Dict[str, Any] = {
+        "display_id": generate_display_id(description),
         "hostel_type": current_user["hostel_type"],
-        "room_number": request.room_number,
-        "description": request.description,
+        "room_number": room_number,
+        "description": description,
         "logged_by_guard": current_user["_id"],
         "created_at": created_at,
         "status_history": [
@@ -89,15 +131,16 @@ async def add_parcel(request: AddParcelRequest, background_tasks: BackgroundTask
         ],
     }
 
-    if request.roll_number:
+    student = None
+    if roll_number:
         student = await db.users.find_one({
-            "roll_number": request.roll_number,
+            "roll_number": roll_number,
             "role": UserRole.STUDENT,
             "hostel_type": current_user["hostel_type"]
         })
 
-        parcel_data["roll_number"] = request.roll_number
-        parcel_data["student_name"] = request.student_name
+        parcel_data["roll_number"] = roll_number
+        parcel_data["student_name"] = student_name
         parcel_data["status"] = ParcelStatus.PENDING  # Always PENDING if roll number is provided
         parcel_data["assigned_at"] = created_at
         parcel_data["status_history"].append(
@@ -105,58 +148,99 @@ async def add_parcel(request: AddParcelRequest, background_tasks: BackgroundTask
                 ParcelTimelineEvent.ASSIGNED,
                 actor=current_user,
                 timestamp=created_at,
-                meta={"roll_number": request.roll_number},
+                meta={"roll_number": roll_number},
             )
         )
 
         if student:
             parcel_data["student_id"] = str(student["_id"])
-            parcel_data["student_name"] = request.student_name or student["name"]
+            parcel_data["student_name"] = student_name or student["name"]
             parcel_data["student_email"] = student["email"]
     else:
         parcel_data["status"] = ParcelStatus.UNASSIGNED
-        parcel_data["student_name"] = request.student_name
+        parcel_data["student_name"] = student_name
 
     result = await db.parcels.insert_one(parcel_data)
     parcel_data["_id"] = str(result.inserted_id)
 
-    if request.roll_number:
+    if roll_number:
         if student:
-            async def safe_send_notification(email, name, room, push_token, parcel_id):
-                try:
-                    await send_parcel_notification(email, name, room)
-                except Exception as e:
-                    logger.warning("Failed to send notification email (Background): %s", str(e))
-                if push_token:
-                    await send_expo_push_notification(
-                        [push_token],
-                        "📦 Parcel Arrived!",
-                        "Your parcel is now at the reception.",
-                        {"parcelId": str(parcel_id)}
-                    )
-
-            background_tasks.add_task(safe_send_notification, student["email"], student["name"], request.room_number, student.get("expoPushToken"), parcel_data["_id"])
+            background_tasks.add_task(
+                _notify_assigned_parcel,
+                student["email"],
+                student["name"],
+                room_number,
+                student.get("expoPushToken"),
+                parcel_data["_id"],
+            )
     else:
-        async def broadcast_to_room(room_number, hostel_type, parcel_id):
-            try:
-                roommates = await db.users.find({
-                    "room_number": room_number,
-                    "hostel_type": hostel_type,
-                    "role": UserRole.STUDENT
-                }).to_list(100)
-                tokens = [user.get("expoPushToken") for user in roommates if user.get("expoPushToken")]
-                if tokens:
-                    await send_expo_push_notification(
-                        tokens,
-                        "📦 Parcel Arrived!",
-                        f"A package has arrived at reception for your room ({room_number}). If you are expecting a delivery, please collect it.",
-                        {"parcelId": str(parcel_id)}
-                    )
-            except Exception as e:
-                logger.warning("Failed to send broadcast push: %s", str(e))
-        background_tasks.add_task(broadcast_to_room, request.room_number, current_user["hostel_type"], parcel_data["_id"])
+        background_tasks.add_task(
+            _broadcast_unassigned_parcel,
+            room_number,
+            current_user["hostel_type"],
+            parcel_data["_id"],
+        )
 
-    return {"message": "Parcel added successfully", "parcel": serialize_parcel(parcel_data)}
+    return serialize_parcel(parcel_data)
+
+
+@router.post("/parcel/add")
+async def add_parcel(request: AddParcelRequest, background_tasks: BackgroundTasks, current_user: dict = Depends(get_current_user)):
+    """Guard adds a new parcel"""
+    if current_user["role"] != UserRole.GUARD:
+        raise HTTPException(status_code=403, detail="Only guards can add parcels")
+    request_hostel_type = validate_hostel_type(request.hostel_type)
+    if request_hostel_type != current_user["hostel_type"]:
+        raise HTTPException(status_code=403, detail="Guards can only add parcels for their own hostel")
+
+    parcel = await _intake_parcel(
+        current_user=current_user,
+        background_tasks=background_tasks,
+        room_number=request.room_number,
+        roll_number=request.roll_number,
+        student_name=request.student_name,
+        description=request.description,
+    )
+    return {"message": "Parcel added successfully", "parcel": parcel}
+
+
+@router.post("/parcel/bulk-add")
+async def bulk_add_parcels(request: BulkAddParcelRequest, background_tasks: BackgroundTasks, current_user: dict = Depends(get_current_user)):
+    """Guard logs a batch of parcels in one request (bulk intake mode).
+
+    Each item is intaken independently and reported individually so a single
+    bad row does not discard the rest of the cart.
+    """
+    if current_user["role"] != UserRole.GUARD:
+        raise HTTPException(status_code=403, detail="Only guards can add parcels")
+    request_hostel_type = validate_hostel_type(request.hostel_type)
+    if request_hostel_type != current_user["hostel_type"]:
+        raise HTTPException(status_code=403, detail="Guards can only add parcels for their own hostel")
+
+    results: List[Dict[str, Any]] = []
+    added = 0
+    for index, item in enumerate(request.items):
+        try:
+            parcel = await _intake_parcel(
+                current_user=current_user,
+                background_tasks=background_tasks,
+                room_number=item.room_number,
+                roll_number=item.roll_number,
+                student_name=item.student_name,
+                description=item.description,
+            )
+            added += 1
+            results.append({"index": index, "ok": True, "parcel": parcel})
+        except Exception as exc:
+            logger.warning("Bulk intake item %s failed: %s", index, exc)
+            results.append({"index": index, "ok": False, "error": "Failed to log this parcel"})
+
+    return {
+        "message": f"Logged {added} of {len(request.items)} parcels",
+        "added": added,
+        "total": len(request.items),
+        "results": results,
+    }
 
 
 @router.put("/parcel/assign")
@@ -230,6 +314,54 @@ async def assign_parcel(request: AssignParcelRequest, current_user: dict = Depen
         asyncio.create_task(safe_push())
 
     return {"message": "Parcel assigned successfully"}
+
+
+@router.get("/parcel/match-student")
+async def match_student_for_label(
+    q: str = ApiQuery(..., min_length=1, max_length=256),
+    current_user: dict = Depends(get_current_user),
+):
+    """Auto-match: parse a 'Name | Room | Roll' label and resolve it to a student.
+
+    Returns the parsed fields, an exact roll-number match when found, and a
+    fuzzy name-ranked candidate list so the guard can confirm with one tap
+    instead of leaving the parcel UNASSIGNED.
+    """
+    if current_user["role"] != UserRole.GUARD:
+        raise HTTPException(status_code=403, detail="Only guards can look up students")
+
+    hostel_type = current_user["hostel_type"]
+    parsed = parse_label(q)
+
+    exact_match: Optional[Dict[str, Any]] = None
+    roll = parsed.get("roll_number")
+    if roll:
+        student = await db.users.find_one({
+            "roll_number": roll,
+            "role": UserRole.STUDENT,
+            "hostel_type": hostel_type,
+        })
+        if student:
+            parsed_room = (parsed.get("room_number") or "").strip().lower()
+            student_room = (student.get("room_number") or "").strip().lower()
+            exact_match = {
+                "roll_number": student.get("roll_number"),
+                "name": student.get("name"),
+                "room_number": student.get("room_number"),
+                "room_matches": (parsed_room == student_room) if (parsed_room and student_room) else None,
+            }
+
+    candidates: List[Dict[str, Any]] = []
+    if parsed.get("name"):
+        students = await db.users.find(
+            {"role": UserRole.STUDENT, "hostel_type": hostel_type},
+            {"name": 1, "roll_number": 1, "room_number": 1},
+        ).to_list(2000)
+        candidates = rank_candidates(parsed, students)
+        if exact_match:
+            candidates = [c for c in candidates if c.get("roll_number") != exact_match["roll_number"]]
+
+    return {"parsed": parsed, "exact_match": exact_match, "candidates": candidates}
 
 
 @router.put("/parcel/update")
